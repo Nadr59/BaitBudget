@@ -1,0 +1,625 @@
+ package com.nadrlab.baitbudget.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.nadrlab.baitbudget.data.model.Store
+import com.nadrlab.baitbudget.viewmodel.BudgetViewModel
+import java.text.SimpleDateFormat
+import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen(viewModel: BudgetViewModel) {
+    val stores by viewModel.allStores.collectAsState()
+    val storesWithDebt by viewModel.storesWithDebt.collectAsState()
+    val allTimePurchases by viewModel.allTimePurchases.collectAsState()
+    val allTimePayments by viewModel.allTimePayments.collectAsState()
+    val monthPurchases by viewModel.monthPurchases.collectAsState()
+    val monthPayments by viewModel.monthPayments.collectAsState()
+    val weekPurchases by viewModel.weekPurchases.collectAsState()
+    val weekPayments by viewModel.weekPayments.collectAsState()
+
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var showAddPurchase by remember { mutableStateOf(false) }
+    var showAddPayment by remember { mutableStateOf(false) }
+    var showQuickSummary by remember { mutableStateOf(false) }
+    val message by viewModel.message.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onMessageShown()
+        }
+    }
+
+    val totalDebt = storesWithDebt.sumOf { it.debt }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            NavigationBar(
+                containerColor = Color(0xFF1A1A1A),
+                contentColor = Color.White
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = { Icon(Icons.Default.Home, null) },
+                    label = { Text("الرئيسية", fontSize = 10.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFF4CAF50),
+                        selectedTextColor = Color(0xFF4CAF50),
+                        unselectedIconColor = Color.Gray,
+                        unselectedTextColor = Color.Gray,
+                        indicatorColor = Color(0xFF1A3A1A)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(Icons.Default.Receipt, null) },
+                    label = { Text("المعاملات", fontSize = 10.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFF4CAF50),
+                        selectedTextColor = Color(0xFF4CAF50),
+                        unselectedIconColor = Color.Gray,
+                        unselectedTextColor = Color.Gray,
+                        indicatorColor = Color(0xFF1A3A1A)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.Store, null) },
+                    label = { Text("البقالات", fontSize = 10.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFF4CAF50),
+                        selectedTextColor = Color(0xFF4CAF50),
+                        unselectedIconColor = Color.Gray,
+                        unselectedTextColor = Color.Gray,
+                        indicatorColor = Color(0xFF1A3A1A)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Default.Assessment, null) },
+                    label = { Text("التقارير", fontSize = 10.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFF4CAF50),
+                        selectedTextColor = Color(0xFF4CAF50),
+                        unselectedIconColor = Color.Gray,
+                        unselectedTextColor = Color.Gray,
+                        indicatorColor = Color(0xFF1A3A1A)
+                    )
+                )
+            }
+        }
+    ) { padding ->
+        Box(modifier = Modifier.padding(padding)) {
+            when (selectedTab) {
+                0 -> HomeTab(
+                    viewModel = viewModel,
+                    storesWithDebt = storesWithDebt,
+                    totalDebt = totalDebt,
+                    weekPurchases = weekPurchases,
+                    weekPayments = weekPayments,
+                    monthPurchases = monthPurchases,
+                    monthPayments = monthPayments,
+                    allTimePurchases = allTimePurchases,
+                    allTimePayments = allTimePayments,
+                    onAddPurchase = { showAddPurchase = true },
+                    onAddPayment = { showAddPayment = true },
+                    onShowSummary = { showQuickSummary = true }
+                )
+                1 -> TransactionsTab(
+                    viewModel = viewModel,
+                    onAddPurchase = { showAddPurchase = true },
+                    onAddPayment = { showAddPayment = true }
+                )
+                2 -> StoresTab(viewModel = viewModel)
+                3 -> ReportsTab(viewModel = viewModel)
+            }
+        }
+    }
+
+    if (showAddPurchase) {
+        AddTransactionDialog(
+            title = "تسجيل شراء",
+            titleColor = Color(0xFFF44336),
+            stores = stores,
+            onDismiss = { showAddPurchase = false },
+            onConfirm = { storeId, amount, desc, note ->
+                viewModel.addPurchase(storeId, amount, desc, note)
+                showAddPurchase = false
+            }
+        )
+    }
+
+    if (showAddPayment) {
+        AddTransactionDialog(
+            title = "تسجيل دفع",
+            titleColor = Color(0xFF4CAF50),
+            stores = stores,
+            onDismiss = { showAddPayment = false },
+            onConfirm = { storeId, amount, desc, note ->
+                viewModel.addPayment(storeId, amount, desc, note)
+                showAddPayment = false
+            }
+        )
+    }
+
+    // ═══ ملخص سريع ═══
+    if (showQuickSummary) {
+        QuickSummaryDialog(
+            viewModel = viewModel,
+            storesWithDebt = storesWithDebt,
+            weekPurchases = weekPurchases,
+            weekPayments = weekPayments,
+            monthPurchases = monthPurchases,
+            monthPayments = monthPayments,
+            onDismiss = { showQuickSummary = false }
+        )
+    }
+}
+
+// ═══════════════════════════════════════════
+// تبويب الرئيسية — الملخص الفوري
+// ═══════════════════════════════════════════
+@Composable
+fun HomeTab(
+    viewModel: BudgetViewModel,
+    storesWithDebt: List<BudgetViewModel.StoreWithDebt>,
+    totalDebt: Double,
+    weekPurchases: Double,
+    weekPayments: Double,
+    monthPurchases: Double,
+    monthPayments: Double,
+    allTimePurchases: Double,
+    allTimePayments: Double,
+    onAddPurchase: () -> Unit,
+    onAddPayment: () -> Unit,
+    onShowSummary: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D0D0D))
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        // ═══ العنوان ═══
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    "ميزانية البيت",
+                    fontSize = 26.sp,
+                    color = Color(0xFF4CAF50),
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    SimpleDateFormat("EEEE، d MMMM yyyy", Locale("ar")).format(Date()),
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+            }
+            IconButton(onClick = onShowSummary) {
+                Icon(
+                    Icons.Default.Summarize,
+                    "ملخص سريع",
+                    tint = Color(0xFFE8C547),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ═══ بطاقة المديونية الرئيسية ═══
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (totalDebt > 0) Color(0xFF3A1A1A) else Color(0xFF1A3A1A)
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    if (totalDebt > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    null,
+                    tint = if (totalDebt > 0) Color(0xFFF44336) else Color(0xFF4CAF50),
+                    modifier = Modifier.size(36.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (totalDebt > 0) "المديونية الكلية" else if (totalDebt < 0) "رصيد لك" else "كل الحسابات مسدّدة",
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
+                Text(
+                    viewModel.formatAmount(kotlin.math.abs(totalDebt)),
+                    color = if (totalDebt > 0) Color(0xFFF44336) else if (totalDebt < 0) Color(0xFF4CAF50) else Color.Gray,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (storesWithDebt.isNotEmpty()) {
+                    Text(
+                        "على ${storesWithDebt.count { it.debt > 0 }} بقالة",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ═══ أزرار سريعة ═══
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onAddPurchase,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(vertical = 14.dp)
+            ) {
+                Icon(Icons.Default.AddShoppingCart, null, tint = Color.White)
+                Spacer(Modifier.width(6.dp))
+                Text("شراء", color = Color.White, fontSize = 15.sp)
+            }
+            Button(
+                onClick = onAddPayment,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(vertical = 14.dp)
+            ) {
+                Icon(Icons.Default.Payment, null, tint = Color.White)
+                Spacer(Modifier.width(6.dp))
+                Text("دفع", color = Color.White, fontSize = 15.sp)
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ═══ ملخص الأسبوع ═══
+        Text(
+            "هذا الأسبوع",
+            color = Color(0xFFE8C547),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SummaryCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.ShoppingCart,
+                title = "مشتريات",
+                value = viewModel.formatAmount(weekPurchases),
+                color = Color(0xFFF44336)
+            )
+            SummaryCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.Payment,
+                title = "مدفوعات",
+                value = viewModel.formatAmount(weekPayments),
+                color = Color(0xFF4CAF50)
+            )
+            SummaryCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.TrendingDown,
+                title = "الصافي",
+                value = viewModel.formatAmount(weekPurchases - weekPayments),
+                color = if (weekPurchases - weekPayments > 0) Color(0xFFFF9800) else Color(0xFF4CAF50)
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ═══ ملخص الشهر ═══
+        Text(
+            "هذا الشهر",
+            color = Color(0xFFE8C547),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SummaryCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.ShoppingCart,
+                title = "مشتريات",
+                value = viewModel.formatAmount(monthPurchases),
+                color = Color(0xFFF44336)
+            )
+            SummaryCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.Payment,
+                title = "مدفوعات",
+                value = viewModel.formatAmount(monthPayments),
+                color = Color(0xFF4CAF50)
+            )
+            SummaryCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.TrendingDown,
+                title = "الصافي",
+                value = viewModel.formatAmount(monthPurchases - monthPayments),
+                color = if (monthPurchases - monthPayments > 0) Color(0xFFFF9800) else Color(0xFF4CAF50)
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // ═══ مديونية كل بقالة ═══
+        if (storesWithDebt.any { it.debt != 0.0 }) {
+            Text(
+                "حسابات البقالات",
+                color = Color(0xFFE8C547),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            for (item in storesWithDebt.filter { it.debt != 0.0 }) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (item.debt > 0) Color(0xFF2A1A1A) else Color(0xFF1A2A1A)
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Store,
+                                null,
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    item.store.name,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (item.debt > 0) "لك ذمة" else "لك رصيد",
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        Text(
+                            viewModel.formatAmount(kotlin.math.abs(item.debt)),
+                            color = if (item.debt > 0) Color(0xFFF44336) else Color(0xFF4CAF50),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // ═══ لا توجد بقالات ═══
+        if (storesWithDebt.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.Store,
+                        null,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("ابدأ بإضافة بقالة", color = Color.Gray, fontSize = 15.sp)
+                    Text(
+                        "اذهب ل蝲�اب البقالات لإضافة أول بقالة",
+                        color = Color(0xFF666666),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(32.dp))
+    }
+}
+
+// ═══════════════════════════════════════════
+// ملخص سريع (حو�ار)
+// ═══════════════════════════════════════════
+@Composable
+fun QuickSummaryDialog(
+    viewModel: BudgetViewModel,
+    storesWithDebt: List<BudgetViewModel.StoreWithDebt>,
+    weekPurchases: Double,
+    weekPayments: Double,
+    monthPurchases: Double,
+    monthPayments: Double,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "📊 ملخص الحسابات",
+                color = Color(0xFFE8C547),
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                // ═══ الأسبوع ═══
+                Text(
+                    "هذا الأسبوع:",
+                    color = Color(0xFFE8C547),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                SummaryRow("مشتريات", viewModel.formatAmount(weekPurchases), Color(0xFFF44336))
+                SummaryRow("مدفوعات", viewModel.formatAmount(weekPayments), Color(0xFF4CAF50))
+                SummaryRow("الصافي", viewModel.formatAmount(weekPurchases - weekPayments), Color(0xFFFF9800))
+
+                Spacer(Modifier.height(12.dp))
+                Divider(color = Color(0xFF333333))
+                Spacer(Modifier.height(12.dp))
+
+                // ═══ الشهر ═══
+                Text(
+                    "هذا الشهر:",
+                    color = Color(0xFFE8C547),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                SummaryRow("مشتريات", viewModel.formatAmount(monthPurchases), Color(0xFFF44336))
+                SummaryRow("مدفوعات", viewModel.formatAmount(monthPayments), Color(0xFF4CAF50))
+                SummaryRow("الصافي", viewModel.formatAmount(monthPurchases - monthPayments), Color(0xFFFF9800))
+
+                Spacer(Modifier.height(12.dp))
+                Divider(color = Color(0xFF333333))
+                Spacer(Modifier.height(12.dp))
+
+                // ═══ البقالات ═══
+                Text(
+                    "حسابات البقالات:",
+                    color = Color(0xFFE8C547),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+
+                if (storesWithDebt.isEmpty()) {
+                    Text("لا توجد بقالات", color = Color.Gray, fontSize = 12.sp)
+                } else {
+                    for (item in storesWithDebt) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(item.store.name, color = Color.White, fontSize = 13.sp)
+                            Text(
+                                if (item.debt > 0)
+                                    "عليك ${viewModel.formatAmount(item.debt)}"
+                                else if (item.debt < 0)
+                                    "لك ${viewModel.formatAmount(kotlin.math.abs(item.debt))}"
+                                else
+                                    "مسدد",
+                                color = if (item.debt > 0) Color(0xFFF44336)
+                                else if (item.debt < 0) Color(0xFF4CAF50)
+                                else Color.Gray,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إغلاق", color = Color(0xFFE8C547))
+            }
+        }
+    )
+}
+
+@Composable
+fun SummaryRow(label: String, value: String, color: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = Color.Gray, fontSize = 13.sp)
+        Text(value, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun SummaryCard(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    value: String,
+    color: Color
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(title, color = Color.Gray, fontSize = 10.sp)
+            Text(value, color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
