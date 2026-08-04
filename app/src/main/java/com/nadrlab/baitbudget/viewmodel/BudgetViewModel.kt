@@ -59,6 +59,24 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val monthPayments = repository.getTotalPaymentsByDateRange(monthStart, monthEnd)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
+    // ═══ الأسبوع الحالي ═══
+    private val weekStart: Long
+        get() {
+            val cal = Calendar.getInstance()
+            cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            return cal.timeInMillis
+        }
+
+    val weekPurchases = repository.getTotalPurchasesByDateRange(weekStart, System.currentTimeMillis())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val weekPayments = repository.getTotalPaymentsByDateRange(weekStart, System.currentTimeMillis())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
     // ═══ المتاجر مع الأرصدة ═══
     val storesWithDebt: StateFlow<List<StoreWithDebt>> = allStores.flatMapLatest { stores ->
         if (stores.isEmpty()) {
@@ -81,22 +99,8 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ═══ التنقل ═══
-    private val _currentScreen = MutableStateFlow("home")
-    val currentScreen: StateFlow<String> = _currentScreen
-
-    private val _selectedStoreId = MutableStateFlow<Long?>(null)
-    val selectedStoreId: StateFlow<Long?> = _selectedStoreId
-
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
-
-    fun navigateTo(screen: String) {
-        _currentScreen.value = screen
-    }
-
-    fun selectStore(storeId: Long?) {
-        _selectedStoreId.value = storeId
-    }
 
     fun onMessageShown() {
         _message.value = null
