@@ -17,28 +17,16 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE date BETWEEN :startDate AND :endDate ORDER BY date DESC")
     fun getTransactionsByDateRange(startDate: Long, endDate: Long): Flow<List<Transaction>>
 
-    @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions
-        WHERE storeId = :storeId AND type = 'PURCHASE'
-    """)
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE storeId = :storeId AND type = 'PURCHASE'")
     fun getTotalPurchases(storeId: Long): Flow<Double>
 
-    @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions
-        WHERE storeId = :storeId AND type = 'PAYMENT'
-    """)
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE storeId = :storeId AND type = 'PAYMENT'")
     fun getTotalPayments(storeId: Long): Flow<Double>
 
-    @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions
-        WHERE type = 'PURCHASE' AND date BETWEEN :startDate AND :endDate
-    """)
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'PURCHASE' AND date BETWEEN :startDate AND :endDate")
     fun getTotalPurchasesByDateRange(startDate: Long, endDate: Long): Flow<Double>
 
-    @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions
-        WHERE type = 'PAYMENT' AND date BETWEEN :startDate AND :endDate
-    """)
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'PAYMENT' AND date BETWEEN :startDate AND :endDate")
     fun getTotalPaymentsByDateRange(startDate: Long, endDate: Long): Flow<Double>
 
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'PURCHASE'")
