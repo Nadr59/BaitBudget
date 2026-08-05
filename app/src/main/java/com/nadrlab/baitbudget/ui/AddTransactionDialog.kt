@@ -1,7 +1,9 @@
 package com.nadrlab.baitbudget.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -28,10 +30,12 @@ fun AddTransactionDialog(
         onDismissRequest = onDismiss,
         title = { Text(title, color = titleColor) },
         text = {
-            Column {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 if (stores.isEmpty()) {
                     Text(
-                        "لا توجد بقالات. أضف بقالة أولاً من تقرير البقالات",
+                        "لا توجد بقالات. أضف بقالة أولاً",
                         color = Color.Gray
                     )
                     return@AlertDialog
@@ -84,6 +88,7 @@ fun AddTransactionDialog(
                     onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' } },
                     label = { Text("المبلغ") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
@@ -99,6 +104,7 @@ fun AddTransactionDialog(
                     onValueChange = { description = it },
                     label = { Text("الوصف (اختياري)") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
@@ -114,6 +120,7 @@ fun AddTransactionDialog(
                     onValueChange = { note = it },
                     label = { Text("ملاحظة (اختياري)") },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
@@ -124,15 +131,17 @@ fun AddTransactionDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
                     if (amount != null && amount > 0 && stores.isNotEmpty()) {
                         onConfirm(stores[selectedStoreIndex].id, amount, description, note)
                     }
-                }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = titleColor),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("تسجيل", color = titleColor)
+                Text("تسجيل", color = Color.White)
             }
         },
         dismissButton = {
