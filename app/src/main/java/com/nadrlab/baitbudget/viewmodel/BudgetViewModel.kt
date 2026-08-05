@@ -4,20 +4,36 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nadrlab.baitbudget.data.BudgetRepository
+import com.nadrlab.baitbudget.data.UserPrefs
 import com.nadrlab.baitbudget.data.db.AppDatabase
 import com.nadrlab.baitbudget.data.model.Store
 import com.nadrlab.baitbudget.data.model.Transaction
 import com.nadrlab.baitbudget.data.model.TransactionType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Calendar
 
 class BudgetViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
     private val repository = BudgetRepository(db.storeDao(), db.transactionDao())
+    val userPrefs = UserPrefs(application)
 
-    // ═══ الحالات ═══
+    // ═══ حالة المصادقة ═══
+    private val _isLoggedIn = MutableStateFlow(userPrefs.isLoggedIn)
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
+
+    private val _isAdmin = MutableStateFlow(userPrefs.isAdmin)
+    val isAdmin: StateFlow<Boolean> = _isAdmin
+
+    private val _userName = MutableStateFlow(userPrefs.userName)
+    val userName: StateFlow<String> = _userName
+
+    // ═══ البيانات ═══
     val allStores = repository.getAllStores()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -87,18 +103,13 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     repository.getTotalPurchases(store.id),
                     repository.getTotalPayments(store.id)
                 ) { purchases, payments ->
-                    StoreWithDebt(
-                        store = store,
-                        totalPurchases = purchases,
-                        totalPayments = payments,
-                        debt = purchases - payments
-                    )
+                    StoreWithDebt(store, purchases, payments, purchases - payments)
                 }
             }) { it.toList() }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // ═══ التنقل ═══
+    // ═══ الرسائل ═══
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
@@ -106,12 +117,47 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         _message.value = null
     }
 
-    // ═══ إضافة متجر ═══
+    // ═══════════════════════════════
+    // المصادقة
+    // ═══════════════════════════════
+    fun loginAsAdmin(password: String): Boolean {
+        return if (userPrefs.checkAdminPassword(password)) {
+            userPrefs.isAdmin = true
+            userPrefs.isLoggedIn = true
+            userPrefs.userName = "مشرف"
+            _isAdmin.value = true
+            _isLoggedIn.value = true
+            _userName.value = "مشرف"
+            true
+        } else false
+    }
+
+    fun loginAsUser(name: String) {
+        userPrefs.isAdmin = false
+        userPrefs.isLoggedIn = true
+        userPrefs.userName = name
+        _isAdmin.value = false
+        _isLoggedIn.value = true
+        _userName.value = name
+    }
+
+    fun logout() {
+        userPrefs.logout()
+        _isLoggedIn.value = false
+        _isAdmin.value = false
+        _userName.value = ""
+    }
+
+    fun changeAdminPassword(oldPass: String, newPass: String): Boolean {
+        return userPrefs.changeAdminPassword(oldPass, newPass)
+    }
+
+    // ═══════════════════════════════
+    // المتاجر
+    // ═══════════════════════════════
     fun addStore(name: String, phone: String, address: String) {
         viewModelScope.launch {
-            repository.insertStore(
-                Store(name = name, phone = phone, address = address)
-            )
+            repository.insertStore(Store(name = name, phone = phone, address = address))
             _message.value = "تم إضافة $name"
         }
     }
@@ -123,34 +169,24 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ═══ إضافة معاملة ═══
+    // ═══════════════════════════════
+    // المعاملات
+    // ═══════════════════════════════
     fun addPurchase(storeId: Long, amount: Double, description: String, note: String = "") {
         viewModelScope.launch {
             repository.insertTransaction(
-                Transaction(
-                    storeId = storeId,
-                    amount = amount,
-                    description = description,
-                    type = TransactionType.PURCHASE,
-                    note = note
-                )
+                Transaction(storeId = storeId, amount = amount, description = description, type = TransactionType.PURCHASE, note = note)
             )
-            _message.value = "تم تسجيل الشراء: %.2f".format(amount)
+            _message.value = "تم تسجيل الشراء: ${formatAmount(amount)}"
         }
     }
 
     fun addPayment(storeId: Long, amount: Double, description: String, note: String = "") {
         viewModelScope.launch {
             repository.insertTransaction(
-                Transaction(
-                    storeId = storeId,
-                    amount = amount,
-                    description = description,
-                    type = TransactionType.PAYMENT,
-                    note = note
-                )
+                Transaction(storeId = storeId, amount = amount, description = description, type = TransactionType.PAYMENT, note = note)
             )
-            _message.value = "تم تسجيل الدفع: %.2f".format(amount)
+            _message.value = "تم تسجيل الدفع: ${formatAmount(amount)}"
         }
     }
 
@@ -161,13 +197,100 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // ═══════════════════════════════
+    // التصدير
+    // ═══════════════════════════════
+    suspend fun exportData(): String {
+        val stores = allStores.first()
+        val transactions = allTransactions.first()
+
+        val json = JSONObject().apply {
+            put("app", "BaitBudget")
+            put("version", 1)
+            put("exportDate", System.currentTimeMillis())
+            put("userName", _userName.value)
+
+            val storesArray = JSONArray()
+            for (store in stores) {
+                storesArray.put(JSONObject().apply {
+                    put("name", store.name)
+                    put("phone", store.phone)
+                    put("address", store.address)
+                })
+            }
+            put("stores", storesArray)
+
+            val transArray = JSONArray()
+            for (t in transactions) {
+                val storeName = stores.find { it.id == t.storeId }?.name ?: ""
+                transArray.put(JSONObject().apply {
+                    put("storeName", storeName)
+                    put("amount", t.amount)
+                    put("description", t.description)
+                    put("type", t.type.name)
+                    put("date", t.date)
+                    put("note", t.note)
+                })
+            }
+            put("transactions", transArray)
+        }
+
+        return json.toString(2)
+    }
+
+    // ═══════════════════════════════
+    // الاستيراد
+    // ═══════════════════════════════
+    suspend fun importData(jsonString: String): Result<Int> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val json = JSONObject(jsonString)
+                val storesArray = json.getJSONArray("stores")
+                val transArray = json.getJSONArray("transactions")
+
+                val currentStores = allStores.first()
+                val storeMap = mutableMapOf<String, Long>()
+
+                for (i in 0 until storesArray.length()) {
+                    val s = storesArray.getJSONObject(i)
+                    val name = s.getString("name")
+                    val phone = s.optString("phone", "")
+                    val address = s.optString("address", "")
+
+                    val existing = currentStores.find { it.name.equals(name, ignoreCase = true) }
+                    val storeId = existing?.id ?: repository.insertStore(
+                        Store(name = name, phone = phone, address = address)
+                    )
+                    storeMap[name] = storeId
+                }
+
+                var count = 0
+                for (i in 0 until transArray.length()) {
+                    val t = transArray.getJSONObject(i)
+                    val storeName = t.getString("storeName")
+                    val storeId = storeMap[storeName] ?: continue
+
+                    repository.insertTransaction(Transaction(
+                        storeId = storeId,
+                        amount = t.getDouble("amount"),
+                        description = t.optString("description", ""),
+                        type = TransactionType.valueOf(t.getString("type")),
+                        date = t.getLong("date"),
+                        note = t.optString("note", "")
+                    ))
+                    count++
+                }
+
+                Result.success(count)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
     // ═══ تنسيق المبالغ ═══
     fun formatAmount(amount: Double): String {
-        return if (amount == amount.toLong().toDouble()) {
-            "%.0f".format(amount)
-        } else {
-            "%.2f".format(amount)
-        }
+        return if (amount == amount.toLong().toDouble()) "%.0f".format(amount) else "%.2f".format(amount)
     }
 
     data class StoreWithDebt(
