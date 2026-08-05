@@ -6,8 +6,8 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class TransactionType {
-    PURCHASE,   // شراء (دين)
-    PAYMENT     // دفع (تسديد)
+    PURCHASE,
+    PAYMENT
 }
 
 @Entity(
@@ -30,5 +30,6 @@ data class Transaction(
     val description: String = "",
     val type: TransactionType,
     val date: Long = System.currentTimeMillis(),
-    val note: String = ""
+    val note: String = "",
+    val senderTag: String = ""
 )
