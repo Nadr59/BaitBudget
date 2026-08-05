@@ -10,6 +10,9 @@ interface StoreDao {
     @Query("SELECT * FROM stores ORDER BY name ASC")
     fun getAllStores(): Flow<List<Store>>
 
+    @Query("SELECT * FROM stores ORDER BY name ASC")
+    suspend fun getAllStoresOnce(): List<Store>
+
     @Query("SELECT * FROM stores WHERE id = :id")
     suspend fun getStoreById(id: Long): Store?
 
