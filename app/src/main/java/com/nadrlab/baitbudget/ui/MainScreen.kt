@@ -203,24 +203,21 @@ fun MainScreen(viewModel: BudgetViewModel) {
 // ═══════════════════════════════════════════
 // تبويب الرئيسية
 // ═══════════════════════════════════════════
+
 @Composable
 fun HomeTab(
     viewModel: BudgetViewModel,
     storesWithDebt: List<BudgetViewModel.StoreWithDebt>,
     totalDebt: Double,
-    weekPurchases: Double,
-    weekPayments: Double,
-    monthPurchases: Double,
-    monthPayments: Double,
-    isAdmin: Boolean,
-    userName: String,
-    onAddPurchase: () -> Unit,
-    onAddPayment: () -> Unit,
-    onShowSummary: () -> Unit,
-    onChangePassword: () -> Unit,
-    onImport: () -> Unit,
-    onLogout: () -> Unit
+    weekPurchases: Double, weekPayments: Double,
+    monthPurchases: Double, monthPayments: Double,
+    isAdmin: Boolean, userName: String,
+    onAddPurchase: () -> Unit, onAddPayment: () -> Unit,
+    onShowSummary: () -> Unit, onChangePassword: () -> Unit,
+    onImport: () -> Unit, onLogout: () -> Unit
 ) {
+    val userSummaries by viewModel.userSummaries.collectAsState()
+    
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -453,6 +450,40 @@ fun HomeTab(
         }
 
         Spacer(Modifier.height(20.dp))
+                // ═══ ملخص المستخدمين (للمشرف) ═══
+        if (isAdmin && userSummaries.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            Text("👥 المستخدمون", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+
+            for (user in userSummaries) {
+                val userDebt = user.totalPurchases - user.totalPayments
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Person, null, tint = Color(0xFF2196F3), modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(user.senderTag, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            if (userDebt > 0) "عليه ${viewModel.formatAmount(userDebt)}"
+                            else if (userDebt < 0) "له ${viewModel.formatAmount(kotlin.math.abs(userDebt))}"
+                            else "مسدد",
+                            color = if (userDebt > 0) Color(0xFFF44336) else if (userDebt < 0) Color(0xFF4CAF50) else Color.Gray,
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
 
         // ═══ حسابات البقالات (للمشرف فقط) ═══
         if (isAdmin && storesWithDebt.any { it.debt != 0.0 }) {
