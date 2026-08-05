@@ -1,5 +1,7 @@
 package com.nadrlab.baitbudget.ui
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -116,30 +118,10 @@ fun MainScreen(viewModel: BudgetViewModel) {
                     onAddPayment = { showAddPayment = true },
                     onShowSummary = { showQuickSummary = true },
                     onChangePassword = { showChangePassword = true },
-                    onExport = {
-                        scope.launch {
-                            val json = viewModel.exportData()
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, json)
-                                putExtra(Intent.EXTRA_SUBJECT, "بيانات ميزانية البيت")
-                            }
-                            context.startActivity(Intent.createChooser(intent, "مشاركة البيانات"))
-                        }
-                    },
-                    onImport = {
-                        scope.launch {
-                            val json = viewModel.exportData()
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, json)
-                            }
-                            context.startActivity(Intent.createChooser(intent, "استيراد"))
-                        }
-                    },
                     onLogout = { viewModel.logout() }
                 )
-                1 -> TransactionsTab(viewModel = viewModel, isAdmin = isAdmin, onAddPurchase = { showAddPurchase = true }, onAddPayment = { showAddPayment = true })
+                1 -> TransactionsTab(viewModel = viewModel, isAdmin = isAdmin,
+                    onAddPurchase = { showAddPurchase = true }, onAddPayment = { showAddPayment = true })
                 2 -> StoresTab(viewModel = viewModel, isAdmin = isAdmin)
                 3 -> if (isAdmin) ReportsTab(viewModel = viewModel)
             }
@@ -193,7 +175,7 @@ fun MainScreen(viewModel: BudgetViewModel) {
 }
 
 // ═══════════════════════════════════════════
-// تبويب الرئيسية
+// تبويب الرئيسية مع الواتساب
 // ═══════════════════════════════════════════
 @Composable
 fun HomeTab(
@@ -205,9 +187,14 @@ fun HomeTab(
     isAdmin: Boolean, userName: String,
     onAddPurchase: () -> Unit, onAddPayment: () -> Unit,
     onShowSummary: () -> Unit, onChangePassword: () -> Unit,
-    onExport: () -> Unit, onImport: () -> Unit,
     onLogout: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    var isExporting by remember { mutableStateOf(false) }
+    var isImporting by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -215,6 +202,7 @@ fun HomeTab(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        // ═══ العنوان ═══
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -228,7 +216,7 @@ fun HomeTab(
                         color = if (isAdmin) Color(0xFFE8C547) else Color(0xFF4CAF50),
                         fontSize = 12.sp, fontWeight = FontWeight.Bold
                     )
-                    Text(" • ", color = Color.Gray, fontSize = 12.sp)
+                    Text("  •  ", color = Color.Gray, fontSize = 12.sp)
                     Text(
                         SimpleDateFormat("EEEE، d MMMM", Locale("ar")).format(Date()),
                         color = Color.Gray, fontSize = 12.sp
@@ -285,7 +273,7 @@ fun HomeTab(
 
         Spacer(Modifier.height(16.dp))
 
-        // ═══ أزرار سريعة ═══
+        // ═══ أزرار شراء/دفع ═══
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onAddPurchase, modifier = Modifier.weight(1f),
@@ -307,37 +295,111 @@ fun HomeTab(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // ═══ زر التصدير (للمستخدم العادي) ═══
+        // ═══ زر التصدير وإرسال عبر الواتساب (للمستخدم العادي) ═══
         if (!isAdmin) {
             Button(
-                onClick = onExport, modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
-                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(vertical = 14.dp)
+                onClick = {
+                    isExporting = true
+                    scope.launch {
+                        try {
+                            val message = viewModel.exportDataForSharing()
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, message)
+                                putExtra(Intent.EXTRA_SUBJECT, "بيانات ميزانية البيت")
+                            }
+                            context.startActivity(Intent.createChooser(intent, "إرسال البيانات عبر"))
+                        } catch (e: Exception) {
+                            snackbarHostState.showSnackbar("خطأ: ${e.message}")
+                        }
+                        isExporting = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isExporting,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(vertical = 14.dp)
             ) {
-                Icon(Icons.Default.Share, null, tint = Color.White)
+                if (isExporting) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.Share, null, tint = Color.White)
+                }
                 Spacer(Modifier.width(8.dp))
-                Text("📤 تصدير البيانات وإرسالها للمشرف", color = Color.White, fontSize = 15.sp)
+                Text("📤 تصدير وإرسال عبر الواتساب", color = Color.White, fontSize = 14.sp)
             }
-            Spacer(Modifier.height(16.dp))
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "سيتم إرسال رسالة تحتوي على جميع بياناتك إلى المشرف",
+                color = Color(0xFF666666),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
         }
 
-        // ═══ زر الاستيراد (للمشرف) ═══
+        // ═══ زر الاستيراد من الحافظة (للمشرف) ═══
         if (isAdmin) {
-            OutlinedButton(
-                onClick = onImport, modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF2196F3)),
-                shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(vertical = 12.dp)
+            Button(
+                onClick = {
+                    isImporting = true
+                    scope.launch {
+                        try {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+
+                            if (clipText.isBlank() || !clipText.contains("BB::")) {
+                                snackbarHostState.showSnackbar("لا توجد بيانات في الحافظة. انسخ رسالة الواتساب أولاً")
+                                isImporting = false
+                                return@launch
+                            }
+
+                            viewModel.importFromClipboard(clipText).fold(
+                                onSuccess = { count ->
+                                    snackbarHostState.showSnackbar("تم استيراد $count معاملة بنجاح")
+                                },
+                                onFailure = { e ->
+                                    snackbarHostState.showSnackbar("خطأ: ${e.message}")
+                                }
+                            )
+                        } catch (e: Exception) {
+                            snackbarHostState.showSnackbar("خطأ: ${e.message}")
+                        }
+                        isImporting = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isImporting,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(vertical = 14.dp)
             ) {
-                Icon(Icons.Default.FileDownload, null, tint = Color(0xFF2196F3))
+                if (isImporting) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.FileDownload, null, tint = Color.White)
+                }
                 Spacer(Modifier.width(8.dp))
-                Text("📥 استيراد بيانات من مستخدم", color = Color(0xFF2196F3), fontSize = 14.sp)
+                Text("📥 استيراد من حافظة الواتساب", color = Color.White, fontSize = 14.sp)
             }
-            Spacer(Modifier.height(16.dp))
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "انسخ رسالة المستخدم من الواتساب ثم اضغط هنا",
+                color = Color(0xFF666666),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         // ═══ ملخص الأسبوع ═══
         Text("هذا الأسبوع", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -421,10 +483,7 @@ fun HomeTab(
 // حوار تغيير كلمة المرور
 // ═══════════════════════════════════════════
 @Composable
-fun ChangePasswordDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit
-) {
+fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
     var oldPass by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
     var confirmPass by remember { mutableStateOf("") }
@@ -437,8 +496,7 @@ fun ChangePasswordDialog(
             Column {
                 OutlinedTextField(
                     value = oldPass, onValueChange = { oldPass = it; error = "" },
-                    label = { Text("كلمة المرور الحالية") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("كلمة المرور الحالية") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray
@@ -447,8 +505,7 @@ fun ChangePasswordDialog(
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = newPass, onValueChange = { newPass = it; error = "" },
-                    label = { Text("كلمة المرور الجديدة") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("كلمة المرور الجديدة") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray
@@ -457,8 +514,7 @@ fun ChangePasswordDialog(
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = confirmPass, onValueChange = { confirmPass = it; error = "" },
-                    label = { Text("تأكيد كلمة المرور") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("تأكيد كلمة المرور") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray
@@ -472,21 +528,13 @@ fun ChangePasswordDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                if (newPass != confirmPass) {
-                    error = "كلمتا المرور غير متطابقتين"
-                } else if (newPass.length < 4) {
-                    error = "كلمة المرور قصيرة جداً"
-                } else {
-                    onConfirm(oldPass, newPass)
-                }
-            }) {
-                Text("تغيير", color = Color(0xFFE8C547))
-            }
+                if (newPass != confirmPass) error = "كلمتا المرور غير متطابقتين"
+                else if (newPass.length < 4) error = "كلمة المرور قصيرة جداً"
+                else onConfirm(oldPass, newPass)
+            }) { Text("تغيير", color = Color(0xFFE8C547)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إلغاء", color = Color.Gray)
-            }
+            TextButton(onClick = onDismiss) { Text("إلغاء", color = Color.Gray) }
         }
     )
 }
