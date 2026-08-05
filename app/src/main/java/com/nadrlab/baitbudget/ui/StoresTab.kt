@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.nadrlab.baitbudget.viewmodel.BudgetViewModel
 
 @Composable
-fun StoresTab(viewModel: BudgetViewModel) {
+fun StoresTab(viewModel: BudgetViewModel, isAdmin: Boolean = true) {
     val storesWithDebt by viewModel.storesWithDebt.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -33,12 +33,7 @@ fun StoresTab(viewModel: BudgetViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "البقالات",
-                fontSize = 22.sp,
-                color = Color(0xFF4CAF50),
-                fontWeight = FontWeight.Bold
-            )
+            Text("البقالات", fontSize = 22.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
             Button(
                 onClick = { showAddDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
@@ -53,20 +48,11 @@ fun StoresTab(viewModel: BudgetViewModel) {
         Spacer(Modifier.height(12.dp))
 
         if (storesWithDebt.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Store,
-                        null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(48.dp)
-                    )
+                    Icon(Icons.Default.Store, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(8.dp))
                     Text("لا توجد بقالات", color = Color.Gray, fontSize = 16.sp)
-                    Text("اضغط إضافة لإضافة بقالة", color = Color.Gray, fontSize = 12.sp)
                 }
             }
         } else {
@@ -78,14 +64,14 @@ fun StoresTab(viewModel: BudgetViewModel) {
                     StoreCard(
                         storeWithDebt = item,
                         formatAmount = viewModel::formatAmount,
-                        onDelete = { viewModel.deleteStore(item.store) }
+                        onDelete = { viewModel.deleteStore(item.store) },
+                        isAdmin = isAdmin
                     )
                 }
             }
         }
     }
 
-    // ═══ حوار إضافة بقالة ═══
     if (showAddDialog) {
         AddStoreDialog(
             onDismiss = { showAddDialog = false },
@@ -101,7 +87,8 @@ fun StoresTab(viewModel: BudgetViewModel) {
 fun StoreCard(
     storeWithDebt: BudgetViewModel.StoreWithDebt,
     formatAmount: (Double) -> String,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    isAdmin: Boolean = true
 ) {
     val debt = storeWithDebt.debt
 
@@ -119,31 +106,19 @@ fun StoreCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Store,
-                        null,
-                        tint = Color(0xFF4CAF50),
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Default.Store, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(10.dp))
                     Column {
-                        Text(
-                            storeWithDebt.store.name,
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(storeWithDebt.store.name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         if (storeWithDebt.store.phone.isNotBlank()) {
-                            Text(
-                                storeWithDebt.store.phone,
-                                color = Color.Gray,
-                                fontSize = 12.sp
-                            )
+                            Text(storeWithDebt.store.phone, color = Color.Gray, fontSize = 12.sp)
                         }
                     }
                 }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, "حذف", tint = Color.Gray)
+                if (isAdmin) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, "حذف", tint = Color.Gray)
+                    }
                 }
             }
 
@@ -151,27 +126,14 @@ fun StoreCard(
             Divider(color = Color(0xFF333333))
             Spacer(Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("إجمالي المشتريات", color = Color.Gray, fontSize = 11.sp)
-                    Text(
-                        formatAmount(storeWithDebt.totalPurchases),
-                        color = Color(0xFFF44336),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("المشتريات", color = Color.Gray, fontSize = 11.sp)
+                    Text(formatAmount(storeWithDebt.totalPurchases), color = Color(0xFFF44336), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("إجمالي المدفوعات", color = Color.Gray, fontSize = 11.sp)
-                    Text(
-                        formatAmount(storeWithDebt.totalPayments),
-                        color = Color(0xFF4CAF50),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("المدفوعات", color = Color.Gray, fontSize = 11.sp)
+                    Text(formatAmount(storeWithDebt.totalPayments), color = Color(0xFF4CAF50), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -185,23 +147,18 @@ fun StoreCard(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         if (debt > 0) "المديونية" else if (debt < 0) "رصيد لك" else "مسدد",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                        color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold
                     )
                     Text(
                         formatAmount(kotlin.math.abs(debt)),
                         color = if (debt > 0) Color(0xFFF44336) else if (debt < 0) Color(0xFF4CAF50) else Color.Gray,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -210,10 +167,7 @@ fun StoreCard(
 }
 
 @Composable
-fun AddStoreDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit
-) {
+fun AddStoreDialog(onDismiss: () -> Unit, onConfirm: (String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
@@ -224,60 +178,43 @@ fun AddStoreDialog(
         text = {
             Column {
                 OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
+                    value = name, onValueChange = { name = it },
                     label = { Text("اسم البقالة") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF4CAF50),
-                        unfocusedBorderColor = Color.Gray
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray
                     )
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
+                    value = phone, onValueChange = { phone = it },
                     label = { Text("رقم الهاتف (اختياري)") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF4CAF50),
-                        unfocusedBorderColor = Color.Gray
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray
                     )
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
+                    value = address, onValueChange = { address = it },
                     label = { Text("العنوان (اختياري)") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF4CAF50),
-                        unfocusedBorderColor = Color.Gray
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray
                     )
                 )
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        onConfirm(name, phone, address)
-                    }
-                }
-            ) {
+            TextButton(onClick = { if (name.isNotBlank()) onConfirm(name, phone, address) }) {
                 Text("إضافة", color = Color(0xFF4CAF50))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إلغاء", color = Color.Gray)
-            }
+            TextButton(onClick = onDismiss) { Text("إلغاء", color = Color.Gray) }
         }
     )
 }
