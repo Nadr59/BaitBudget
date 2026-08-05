@@ -184,47 +184,48 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ═══════════════════════════════
+    
+        // ═══════════════════════════════
     // التصدير عبر الواتساب
     // ═══════════════════════════════
     suspend fun exportDataForSharing(): String {
-        val stores = allStores.first()
-        val transactions = allTransactions.first()
+        val stores = allStores.value
+        val transactions = allTransactions.value
 
         val json = JSONObject().apply {
             put("app", "BaitBudget")
-            put("version", 1)
-            put("exportDate", System.currentTimeMillis())
-            put("userName", _userName.value)
+            put("v", 1)
+            put("d", System.currentTimeMillis())
+            put("u", _userName.value)
 
-            val storesArray = JSONArray()
+            val sa = JSONArray()
             for (store in stores) {
-                storesArray.put(JSONObject().apply {
-                    put("name", store.name)
-                    put("phone", store.phone)
-                    put("address", store.address)
+                sa.put(JSONObject().apply {
+                    put("n", store.name)
+                    put("p", store.phone)
+                    put("a", store.address)
                 })
             }
-            put("stores", storesArray)
+            put("s", sa)
 
-            val transArray = JSONArray()
+            val ta = JSONArray()
             for (t in transactions) {
                 val storeName = stores.find { it.id == t.storeId }?.name ?: ""
-                transArray.put(JSONObject().apply {
-                    put("storeName", storeName)
-                    put("amount", t.amount)
-                    put("description", t.description)
-                    put("type", t.type.name)
-                    put("date", t.date)
-                    put("note", t.note)
+                ta.put(JSONObject().apply {
+                    put("n", storeName)
+                    put("a", t.amount)
+                    put("d", t.description)
+                    put("t", if (t.type == TransactionType.PURCHASE) "P" else "Y")
+                    put("dt", t.date)
+                    put("nt", t.note)
                 })
             }
-            put("transactions", transArray)
+            put("t", ta)
         }
 
         val base64 = Base64.encodeToString(
             json.toString().toByteArray(Charsets.UTF_8),
-            Base64.NO_WRAP
+            Base64.NO_WRAP or Base64.URL_SAFE
         )
 
         val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar"))
@@ -234,14 +235,12 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         return buildString {
             appendLine("📊 بيانات ميزانية البيت")
             appendLine("👤 المرسل: ${_userName.value}")
-            appendLine("📅 التاريخ: ${dateFormat.format(Date())}")
-            appendLine("🛒 عدد المشتريات: $purchasesCount")
-            appendLine("💰 عدد المدفوعات: $paymentsCount")
-            appendLine("🏪 عدد البقالات: ${stores.size}")
-            appendLine("─".repeat(20))
-            appendLine("BB::${base64}::")
-            appendLine("─".repeat(20))
-            appendLine("📥 للاستيراد: انسخ الرسالة واضغط \"استيراد\" في التطبيق")
+            appendLine("📅 ${dateFormat.format(Date())}")
+            appendLine("🛒 مشتريات: $purchasesCount | 💰 مدفوعات: $paymentsCount")
+            appendLine("────────────────")
+            appendLine("BB2::$base64")
+            appendLine("────────────────")
+            appendLine("📥 انسخ هذه الرسالة واضغط استيراد")
         }
     }
 
@@ -251,32 +250,31 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun importFromClipboard(clipboardText: String): Result<Int> {
         return withContext(Dispatchers.IO) {
             try {
-                val regex = Regex("BB::(.+?)::")
+                val regex = Regex("BB2::(\\S+)")
                 val match = regex.find(clipboardText)
                     ?: return@withContext Result.failure(
-                        Exception("لم يتم العثور على بيانات صالحة. تأكد من نسخ الرسالة كاملة")
+                        Exception("لم يتم العثور على بيانات. تأكد من نسخ الرسالة كاملة")
                     )
 
                 val base64 = match.groupValues[1]
                 val jsonString = String(
-                    Base64.decode(base64, Base64.NO_WRAP),
+                    Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE),
                     Charsets.UTF_8
                 )
                 val json = JSONObject(jsonString)
 
-                val senderName = json.optString("userName", "غير معروف")
-                val storesArray = json.getJSONArray("stores")
-                val transArray = json.getJSONArray("transactions")
+                val storesArray = json.getJSONArray("s")
+                val transArray = json.getJSONArray("t")
 
-                // إنشاء/مطابقة البقالات
-                val currentStores = allStores.first()
+                // قراءة البقالات الحالية من Room مباشرة
+                val currentStores = db.storeDao().getAllStoresOnce()
                 val storeMap = mutableMapOf<String, Long>()
 
                 for (i in 0 until storesArray.length()) {
                     val s = storesArray.getJSONObject(i)
-                    val name = s.getString("name")
-                    val phone = s.optString("phone", "")
-                    val address = s.optString("address", "")
+                    val name = s.getString("n")
+                    val phone = s.optString("p", "")
+                    val address = s.optString("a", "")
 
                     val existing = currentStores.find {
                         it.name.equals(name, ignoreCase = true)
@@ -291,23 +289,23 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 var count = 0
                 for (i in 0 until transArray.length()) {
                     val t = transArray.getJSONObject(i)
-                    val storeName = t.getString("storeName")
+                    val storeName = t.getString("n")
                     val storeId = storeMap[storeName] ?: continue
 
                     repository.insertTransaction(Transaction(
                         storeId = storeId,
-                        amount = t.getDouble("amount"),
-                        description = t.optString("description", ""),
-                        type = TransactionType.valueOf(t.getString("type")),
-                        date = t.getLong("date"),
-                        note = t.optString("note", "")
+                        amount = t.getDouble("a"),
+                        description = t.optString("d", ""),
+                        type = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT,
+                        date = t.getLong("dt"),
+                        note = t.optString("nt", "")
                     ))
                     count++
                 }
 
                 Result.success(count)
             } catch (e: Exception) {
-                Result.failure(Exception("خطأ في قراءة البيانات: ${e.message}"))
+                Result.failure(Exception("خطأ في البيانات: ${e.message}"))
             }
         }
     }
