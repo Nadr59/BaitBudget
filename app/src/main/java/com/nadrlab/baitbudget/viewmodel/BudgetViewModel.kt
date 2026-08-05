@@ -1,6 +1,7 @@
 package com.nadrlab.baitbudget.viewmodel
 
 import android.app.Application
+import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nadrlab.baitbudget.data.BudgetRepository
@@ -15,7 +16,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.*
 
 class BudgetViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -46,7 +48,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val allTimePayments = repository.getAllTimePayments()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    // ═══ الشهر الحالي ═══
+    // ═══ الشهر ═══
     private val monthStart: Long
         get() {
             val cal = Calendar.getInstance()
@@ -75,7 +77,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val monthPayments = repository.getTotalPaymentsByDateRange(monthStart, monthEnd)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    // ═══ الأسبوع الحالي ═══
+    // ═══ الأسبوع ═══
     private val weekStart: Long
         get() {
             val cal = Calendar.getInstance()
@@ -95,57 +97,42 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     // ═══ المتاجر مع الأرصدة ═══
     val storesWithDebt: StateFlow<List<StoreWithDebt>> = allStores.flatMapLatest { stores ->
-        if (stores.isEmpty()) {
-            flowOf(emptyList())
-        } else {
-            combine(stores.map { store ->
-                combine(
-                    repository.getTotalPurchases(store.id),
-                    repository.getTotalPayments(store.id)
-                ) { purchases, payments ->
-                    StoreWithDebt(store, purchases, payments, purchases - payments)
-                }
-            }) { it.toList() }
-        }
+        if (stores.isEmpty()) flowOf(emptyList())
+        else combine(stores.map { store ->
+            combine(
+                repository.getTotalPurchases(store.id),
+                repository.getTotalPayments(store.id)
+            ) { purchases, payments ->
+                StoreWithDebt(store, purchases, payments, purchases - payments)
+            }
+        }) { it.toList() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ═══ الرسائل ═══
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    fun onMessageShown() {
-        _message.value = null
-    }
+    fun onMessageShown() { _message.value = null }
 
     // ═══════════════════════════════
     // المصادقة
     // ═══════════════════════════════
     fun loginAsAdmin(password: String): Boolean {
         return if (userPrefs.checkAdminPassword(password)) {
-            userPrefs.isAdmin = true
-            userPrefs.isLoggedIn = true
-            userPrefs.userName = "مشرف"
-            _isAdmin.value = true
-            _isLoggedIn.value = true
-            _userName.value = "مشرف"
+            userPrefs.isAdmin = true; userPrefs.isLoggedIn = true; userPrefs.userName = "مشرف"
+            _isAdmin.value = true; _isLoggedIn.value = true; _userName.value = "مشرف"
             true
         } else false
     }
 
     fun loginAsUser(name: String) {
-        userPrefs.isAdmin = false
-        userPrefs.isLoggedIn = true
-        userPrefs.userName = name
-        _isAdmin.value = false
-        _isLoggedIn.value = true
-        _userName.value = name
+        userPrefs.isAdmin = false; userPrefs.isLoggedIn = true; userPrefs.userName = name
+        _isAdmin.value = false; _isLoggedIn.value = true; _userName.value = name
     }
 
     fun logout() {
         userPrefs.logout()
-        _isLoggedIn.value = false
-        _isAdmin.value = false
-        _userName.value = ""
+        _isLoggedIn.value = false; _isAdmin.value = false; _userName.value = ""
     }
 
     fun changeAdminPassword(oldPass: String, newPass: String): Boolean {
@@ -198,9 +185,9 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // ═══════════════════════════════
-    // التصدير
+    // التصدير عبر الواتساب
     // ═══════════════════════════════
-    suspend fun exportData(): String {
+    suspend fun exportDataForSharing(): String {
         val stores = allStores.first()
         val transactions = allTransactions.first()
 
@@ -235,19 +222,53 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             put("transactions", transArray)
         }
 
-        return json.toString(2)
+        val base64 = Base64.encodeToString(
+            json.toString().toByteArray(Charsets.UTF_8),
+            Base64.NO_WRAP
+        )
+
+        val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar"))
+        val purchasesCount = transactions.count { it.type == TransactionType.PURCHASE }
+        val paymentsCount = transactions.count { it.type == TransactionType.PAYMENT }
+
+        return buildString {
+            appendLine("📊 بيانات ميزانية البيت")
+            appendLine("👤 المرسل: ${_userName.value}")
+            appendLine("📅 التاريخ: ${dateFormat.format(Date())}")
+            appendLine("🛒 عدد المشتريات: $purchasesCount")
+            appendLine("💰 عدد المدفوعات: $paymentsCount")
+            appendLine("🏪 عدد البقالات: ${stores.size}")
+            appendLine("─".repeat(20))
+            appendLine("BB::${base64}::")
+            appendLine("─".repeat(20))
+            appendLine("📥 للاستيراد: انسخ الرسالة واضغط \"استيراد\" في التطبيق")
+        }
     }
 
     // ═══════════════════════════════
-    // الاستيراد
+    // الاستيراد من الحافظة
     // ═══════════════════════════════
-    suspend fun importData(jsonString: String): Result<Int> {
+    suspend fun importFromClipboard(clipboardText: String): Result<Int> {
         return withContext(Dispatchers.IO) {
             try {
+                val regex = Regex("BB::(.+?)::")
+                val match = regex.find(clipboardText)
+                    ?: return@withContext Result.failure(
+                        Exception("لم يتم العثور على بيانات صالحة. تأكد من نسخ الرسالة كاملة")
+                    )
+
+                val base64 = match.groupValues[1]
+                val jsonString = String(
+                    Base64.decode(base64, Base64.NO_WRAP),
+                    Charsets.UTF_8
+                )
                 val json = JSONObject(jsonString)
+
+                val senderName = json.optString("userName", "غير معروف")
                 val storesArray = json.getJSONArray("stores")
                 val transArray = json.getJSONArray("transactions")
 
+                // إنشاء/مطابقة البقالات
                 val currentStores = allStores.first()
                 val storeMap = mutableMapOf<String, Long>()
 
@@ -257,13 +278,16 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     val phone = s.optString("phone", "")
                     val address = s.optString("address", "")
 
-                    val existing = currentStores.find { it.name.equals(name, ignoreCase = true) }
+                    val existing = currentStores.find {
+                        it.name.equals(name, ignoreCase = true)
+                    }
                     val storeId = existing?.id ?: repository.insertStore(
                         Store(name = name, phone = phone, address = address)
                     )
                     storeMap[name] = storeId
                 }
 
+                // إضافة المعاملات
                 var count = 0
                 for (i in 0 until transArray.length()) {
                     val t = transArray.getJSONObject(i)
@@ -283,7 +307,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
                 Result.success(count)
             } catch (e: Exception) {
-                Result.failure(e)
+                Result.failure(Exception("خطأ في قراءة البيانات: ${e.message}"))
             }
         }
     }
