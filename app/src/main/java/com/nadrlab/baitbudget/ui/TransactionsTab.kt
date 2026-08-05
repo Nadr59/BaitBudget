@@ -24,6 +24,7 @@ import java.util.*
 @Composable
 fun TransactionsTab(
     viewModel: BudgetViewModel,
+    isAdmin: Boolean = true,
     onAddPurchase: () -> Unit,
     onAddPayment: () -> Unit
 ) {
@@ -37,22 +38,12 @@ fun TransactionsTab(
             .background(Color(0xFF0D0D0D))
             .padding(16.dp)
     ) {
-        Text(
-            "المعاملات",
-            fontSize = 22.sp,
-            color = Color(0xFF4CAF50),
-            fontWeight = FontWeight.Bold
-        )
-
+        Text("المعاملات", fontSize = 22.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = onAddPurchase,
-                modifier = Modifier.weight(1f),
+                onClick = onAddPurchase, modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -60,10 +51,8 @@ fun TransactionsTab(
                 Spacer(Modifier.width(6.dp))
                 Text("شراء", color = Color.White)
             }
-
             Button(
-                onClick = onAddPayment,
-                modifier = Modifier.weight(1f),
+                onClick = onAddPayment, modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -76,20 +65,11 @@ fun TransactionsTab(
         Spacer(Modifier.height(12.dp))
 
         if (transactions.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Receipt,
-                        null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(48.dp)
-                    )
+                    Icon(Icons.Default.Receipt, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(8.dp))
                     Text("لا توجد معاملات", color = Color.Gray, fontSize = 16.sp)
-                    Text("اضغط شراء أو دفع لبدء التسجيل", color = Color.Gray, fontSize = 12.sp)
                 }
             }
         } else {
@@ -99,13 +79,13 @@ fun TransactionsTab(
             ) {
                 items(transactions) { transaction ->
                     val storeName = stores.find { it.id == transaction.storeId }?.name ?: "غير معروف"
-
                     TransactionCard(
                         transaction = transaction,
                         storeName = storeName,
                         dateFormatted = dateFormat.format(Date(transaction.date)),
                         formatAmount = viewModel::formatAmount,
-                        onDelete = { viewModel.deleteTransaction(transaction) }
+                        onDelete = { viewModel.deleteTransaction(transaction) },
+                        isAdmin = isAdmin
                     )
                 }
             }
@@ -119,7 +99,8 @@ fun TransactionCard(
     storeName: String,
     dateFormatted: String,
     formatAmount: (Double) -> String,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    isAdmin: Boolean = true
 ) {
     val isPurchase = transaction.type == TransactionType.PURCHASE
 
@@ -131,59 +112,36 @@ fun TransactionCard(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (isPurchase) "🛒 شراء" else "💰 دفع",
+                        if (isPurchase) "شراء" else "دفع",
                         color = if (isPurchase) Color(0xFFF44336) else Color(0xFF4CAF50),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        storeName,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text(storeName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 if (transaction.description.isNotBlank()) {
-                    Text(
-                        transaction.description,
-                        color = Color.Gray,
-                        fontSize = 12.sp
-                    )
+                    Text(transaction.description, color = Color.Gray, fontSize = 12.sp)
                 }
-                Text(
-                    dateFormatted,
-                    color = Color(0xFF666666),
-                    fontSize = 11.sp
-                )
+                Text(dateFormatted, color = Color(0xFF666666), fontSize = 11.sp)
             }
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     formatAmount(transaction.amount),
                     color = if (isPurchase) Color(0xFFF44336) else Color(0xFF4CAF50),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 18.sp, fontWeight = FontWeight.Bold
                 )
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        "حذف",
-                        tint = Color.Gray,
-                        modifier = Modifier.size(16.dp)
-                    )
+                if (isAdmin) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Delete, "حذف", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
         }
