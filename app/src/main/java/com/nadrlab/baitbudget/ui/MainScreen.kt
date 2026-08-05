@@ -518,7 +518,7 @@ fun HomeTab(
 }
 
 // ═══════════════════════════════════════════
-// حوار الاستيراد
+// حوار الاستيراد (مبسط وموثوق)
 // ═══════════════════════════════════════════
 @Composable
 fun ImportDialog(
@@ -526,7 +526,7 @@ fun ImportDialog(
     onImport: (String) -> Unit
 ) {
     var pastedText by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
+    var hasData by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -540,76 +540,83 @@ fun ImportDialog(
         text = {
             Column {
                 Text(
-                    "الصق رسالة الواتساب المستلمة من المستخدم:",
+                    "الصق رسالة الواتساب المستلمة:",
                     color = Color.White,
                     fontSize = 13.sp
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Text(
-                    "1. افتح الواتساب\n2. اضغط مطول على الرسالة\n3. اختر نسخ\n4. العود هنا والصق",
-                    color = Color.Gray,
-                    fontSize = 11.sp
                 )
 
                 Spacer(Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = pastedText,
-                    onValueChange = { pastedText = it; error = "" },
+                    onValueChange = { newText ->
+                        pastedText = newText
+                        hasData = newText.contains("BB2")
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 120.dp),
-                    placeholder = { Text("الصق الرسالة هنا...", color = Color.Gray) },
+                        .heightIn(min = 100.dp),
+                    placeholder = {
+                        Text(
+                            "الصق الرسالة هنا...",
+                            color = Color(0xFF666666)
+                        )
+                    },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFF2196F3),
-                        unfocusedBorderColor = Color.Gray,
+                        unfocusedBorderColor = Color(0xFF444444),
                         cursorColor = Color(0xFF2196F3)
                     )
                 )
 
-                if (pastedText.isNotBlank() && !pastedText.contains("BB2::")) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "لم يتم العثور على بيانات صالحة",
-                        color = Color(0xFFFF9800),
-                        fontSize = 11.sp
-                    )
-                }
+                Spacer(Modifier.height(8.dp))
 
-                if (pastedText.contains("BB2::")) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "تم العثور على بيانات صالحة!",
-                        color = Color(0xFF4CAF50),
-                        fontSize = 11.sp
-                    )
-                }
-
-                if (error.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(error, color = Color.Red, fontSize = 12.sp)
+                when {
+                    pastedText.isBlank() -> {
+                        Text(
+                            "الصق الرسالة من الواتساب هنا",
+                            color = Color(0xFF666666),
+                            fontSize = 11.sp
+                        )
+                    }
+                    hasData -> {
+                        Text(
+                            "تم العثور على بيانات - اضغط استيراد",
+                            color = Color(0xFF4CAF50),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    else -> {
+                        Text(
+                            "لم يتم التعرف على البيانات. تأكد من نسخ الرسالة كاملة",
+                            color = Color(0xFFFF9800),
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = {
-                    if (pastedText.isBlank()) {
-                        error = "الرجاء لصق الرسالة"
-                        return@TextButton
+                    if (pastedText.isNotBlank()) {
+                        onImport(pastedText)
                     }
-                    if (!pastedText.contains("BB2::")) {
-                        error = "الرسالة لا تحتوي بيانات صالحة"
-                        return@TextButton
-                    }
-                    onImport(pastedText)
-                }
+                },
+                enabled = pastedText.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF2196F3),
+                    disabledContainerColor = Color(0xFF333333)
+                ),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("استيراد", color = Color(0xFF2196F3), fontWeight = FontWeight.Bold)
+                Text(
+                    "استيراد",
+                    color = if (pastedText.isNotBlank()) Color.White else Color.Gray
+                )
             }
         },
         dismissButton = {
