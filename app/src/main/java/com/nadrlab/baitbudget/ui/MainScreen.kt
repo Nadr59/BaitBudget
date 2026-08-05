@@ -343,7 +343,7 @@ fun HomeTab(
             Spacer(Modifier.height(12.dp))
         }
 
-        // ═══ زر الاستيراد من الحافظة (للمشرف) ═══
+                // ═══ زر الاستيراد (للمشرف) ═══
         if (isAdmin) {
             Button(
                 onClick = {
@@ -351,15 +351,23 @@ fun HomeTab(
                     scope.launch {
                         try {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                            val clip = clipboard.primaryClip
+                            val clipText = clip?.getItemAt(0)?.text?.toString() ?: ""
 
-                            if (clipText.isBlank() || !clipText.contains("BB::")) {
-                                snackbarHostState.showSnackbar("لا توجد بيانات في الحافظة. انسخ رسالة الواتساب أولاً")
+                            if (clipText.isBlank()) {
+                                snackbarHostState.showSnackbar("الحافظة فاضية! انسخ رسالة الواتساب أولاً")
                                 isImporting = false
                                 return@launch
                             }
 
-                            viewModel.importFromClipboard(clipText).fold(
+                            if (!clipText.contains("BB2::")) {
+                                snackbarHostState.showSnackbar("لا توجد بيانات صالحة في الحافظة")
+                                isImporting = false
+                                return@launch
+                            }
+
+                            val result = viewModel.importFromClipboard(clipText)
+                            result.fold(
                                 onSuccess = { count ->
                                     snackbarHostState.showSnackbar("تم استيراد $count معاملة بنجاح")
                                 },
@@ -398,8 +406,8 @@ fun HomeTab(
 
             Spacer(Modifier.height(12.dp))
         }
-
-        Spacer(Modifier.height(4.dp))
+        
+          
 
         // ═══ ملخص الأسبوع ═══
         Text("هذا الأسبوع", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
