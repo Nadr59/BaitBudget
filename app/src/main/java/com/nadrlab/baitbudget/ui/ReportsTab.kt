@@ -29,7 +29,7 @@ fun ReportsTab(viewModel: BudgetViewModel) {
     val storesWithDebt by viewModel.storesWithDebt.collectAsState()
     val userSummaries by viewModel.userSummaries.collectAsState()
 
-    val totalDebt = storesWithDebt.sumOf { it.debt }.coerceAtLeast(0.0)
+    val totalDebt = storesWithDebt.fold(0.0) { acc, item -> acc + item.debt }.coerceAtLeast(0.0)
     val monthName = remember { SimpleDateFormat("MMMM yyyy", Locale("ar")).format(Date()) }
 
     Column(
@@ -42,7 +42,6 @@ fun ReportsTab(viewModel: BudgetViewModel) {
         Text("التقارير", fontSize = 22.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
 
-        // ═══ ملخص الشهر ═══
         Text("📊 $monthName", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -54,7 +53,6 @@ fun ReportsTab(viewModel: BudgetViewModel) {
 
         Spacer(Modifier.height(24.dp))
 
-        // ═══ ملخص شامل ═══
         Text("📈 إجمالي", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -66,19 +64,16 @@ fun ReportsTab(viewModel: BudgetViewModel) {
 
         Spacer(Modifier.height(24.dp))
 
-        // ═══ ملخص المستخدمين ═══
         if (userSummaries.isNotEmpty()) {
             Text("👥 ملخص المستخدمين", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 
             for (user in userSummaries) {
-                val debt = user.totalPurchases - user.totalPayments
+                val userDebt = user.totalPurchases - user.totalPayments
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (debt > 0) Color(0xFF2A1A1A) else if (debt < 0) Color(0xFF1A2A1A) else Color(0xFF1A1A1A)
+                        containerColor = if (userDebt > 0) Color(0xFF2A1A1A) else if (userDebt < 0) Color(0xFF1A2A1A) else Color(0xFF1A1A1A)
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -94,22 +89,17 @@ fun ReportsTab(viewModel: BudgetViewModel) {
                                 Text(user.senderTag, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             }
                             Text(
-                                if (debt > 0) "عليه ${viewModel.formatAmount(debt)}"
-                                else if (debt < 0) "له ${viewModel.formatAmount(kotlin.math.abs(debt))}"
+                                if (userDebt > 0) "عليه ${viewModel.formatAmount(userDebt)}"
+                                else if (userDebt < 0) "له ${viewModel.formatAmount(kotlin.math.abs(userDebt))}"
                                 else "مسدد",
-                                color = if (debt > 0) Color(0xFFF44336) else if (debt < 0) Color(0xFF4CAF50) else Color.Gray,
+                                color = if (userDebt > 0) Color(0xFFF44336) else if (userDebt < 0) Color(0xFF4CAF50) else Color.Gray,
                                 fontSize = 14.sp, fontWeight = FontWeight.Bold
                             )
                         }
-
                         Spacer(Modifier.height(8.dp))
                         Divider(color = Color(0xFF333333))
                         Spacer(Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("مشتريات", color = Color.Gray, fontSize = 11.sp)
                                 Text(viewModel.formatAmount(user.totalPurchases), color = Color(0xFFF44336), fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -118,14 +108,6 @@ fun ReportsTab(viewModel: BudgetViewModel) {
                                 Text("مدفوعات", color = Color.Gray, fontSize = 11.sp)
                                 Text(viewModel.formatAmount(user.totalPayments), color = Color(0xFF4CAF50), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("الرصيد", color = Color.Gray, fontSize = 11.sp)
-                                Text(
-                                    viewModel.formatAmount(kotlin.math.abs(debt)),
-                                    color = if (debt > 0) Color(0xFFF44336) else if (debt < 0) Color(0xFF4CAF50) else Color.Gray,
-                                    fontSize = 14.sp, fontWeight = FontWeight.Bold
-                                )
-                            }
                         }
                     }
                 }
@@ -133,7 +115,6 @@ fun ReportsTab(viewModel: BudgetViewModel) {
 
             Spacer(Modifier.height(8.dp))
 
-            // ═══ ملخص المشرف ═══
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
@@ -151,7 +132,6 @@ fun ReportsTab(viewModel: BudgetViewModel) {
 
         Spacer(Modifier.height(24.dp))
 
-        // ═══ ملخص البقالات ═══
         Text("🏪 ملخص البقالات", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
 
@@ -195,13 +175,7 @@ fun ReportsTab(viewModel: BudgetViewModel) {
 }
 
 @Composable
-fun ReportCard(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    title: String,
-    value: String,
-    color: Color
-) {
+fun ReportCard(modifier: Modifier = Modifier, icon: ImageVector, title: String, value: String, color: Color) {
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
