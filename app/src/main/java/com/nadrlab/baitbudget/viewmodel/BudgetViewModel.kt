@@ -24,7 +24,15 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     private val db = AppDatabase.getDatabase(application)
     private val repository = BudgetRepository(db.storeDao(), db.transactionDao())
     val userPrefs = UserPrefs(application)
-
+    // ═══ تحويل الأرقام العربية إلى إنجليزية ═══
+    private fun normalizeNumbers(text: String): String {
+        return text
+            .replace('٠', '0').replace('١', '1').replace('٢', '2')
+            .replace('٣', '3').replace('٤', '4').replace('٥', '5')
+            .replace('٦', '6').replace('٧', '7').replace('٨', '8')
+            .replace('٩', '9')
+            .replace('٫', '.').replace('،', ',')
+    }
     // ═══ حالة المصادقة ═══
     private val _isLoggedIn = MutableStateFlow(userPrefs.isLoggedIn)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
@@ -255,53 +263,91 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ═══════════════════════════════
-    // الاستيراد (مع senderTag)
+        // ═══════════════════════════════
+    // الاستيراد (محسّن ومُصحح)
     // ═══════════════════════════════
     fun importFromClipboard(clipboardText: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // تنظيف النص
                 val cleanText = clipboardText
                     .replace(Regex("[\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]"), "")
                     .replace("\r\n", "\n")
                     .replace("\r", "\n")
 
+                // البحث عن العلامة
                 val markerIndex = cleanText.indexOf("BB2::")
                 if (markerIndex < 0) {
                     _message.value = "لم يتم العثور على بيانات صالحة"
                     return@launch
                 }
 
-                val dataStart = markerIndex + 5
-                val remaining = cleanText.substring(dataStart)
+                // استخراج كل النص بعد العلامة
+                val afterMarker = cleanText.substring(markerIndex + 5)
 
-                val base64Builder = StringBuilder()
-                for (line in remaining.split("\n")) {
+                // جمع كل الأحرف القابلة لفك التشفير من Base64
+                val base64Chars = StringBuilder()
+                for (line in afterMarker.split("\n")) {
                     val trimmed = line.trim()
-                    if (trimmed.contains("────") || trimmed.contains("────")) {
-                        if (base64Builder.isNotEmpty()) break
+                    // توقف عند الفاصل
+                    if (trimmed.startsWith("────") || trimmed.startsWith("────") || trimmed.startsWith("---")) {
+                        if (base64Chars.isNotEmpty()) break
                         continue
                     }
-                    if (trimmed.length < 10 && base64Builder.isEmpty()) continue
-                    if (trimmed.isNotBlank()) base64Builder.append(trimmed)
+                    // تجاهل النصوص القصيرة (رسائل وصفية)
+                    if (trimmed.length < 20 && base64Chars.isEmpty() && !trimmed.contains("=")) continue
+                    // جمع أحرف Base64 فقط
+                    for (ch in trimmed) {
+                        if (ch.isLetterOrDigit() || ch == '+' || ch == '/' || ch == '-' || ch == '_' || ch == '=') {
+                            base64Chars.append(ch)
+                        }
+                    }
                 }
 
-                val base64 = base64Builder.toString().trim()
-                if (base64.isBlank()) {
-                    _message.value = "لم يتم العثور على بيانات صالحة"
+                val base64 = base64Chars.toString().trim()
+                if (base64.length < 20) {
+                    _message.value = "بيانات غير كافية (${base64.length} حرف)"
                     return@launch
                 }
 
-                val jsonString = String(
-                    Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE),
-                    Charsets.UTF_8
-                )
-                val json = JSONObject(jsonString)
+                // فك التشفير
+                val decoded = try {
+                    Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE)
+                } catch (e: Exception) {
+                    // محاولة بخيارات مختلفة
+                    try {
+                        Base64.decode(base64, Base64.DEFAULT)
+                    } catch (e2: Exception) {
+                        _message.value = "لا يمكن فك تشفير البيانات: ${e2.message}"
+                        return@launch
+                    }
+                }
+
+                val jsonString = String(decoded, Charsets.UTF_8)
+
+                // تحليل JSON
+                val json = try {
+                    JSONObject(jsonString)
+                } catch (e: Exception) {
+                    _message.value = "بيانات JSON غير صالحة"
+                    return@launch
+                }
 
                 val senderName = json.optString("u", "غير معروف")
-                val storesArray = json.getJSONArray("s")
-                val transArray = json.getJSONArray("t")
 
+                // استخراج البقالات
+                val storesArray = try { json.getJSONArray("s") } catch (e: Exception) {
+                    _message.value = "لا توجد بقالات في البيانات"
+                    return@launch
+                }
+
+                // استخراج المعاملات
+                val transArray = try { json.getJSONArray("t") } catch (e: Exception) {
+                    _message.value = "لا توجد معاملات في البيانات"
+                    return@launch
+                }
+
+                // مطابقة البقالات
                 val currentStores = db.storeDao().getAllStoresOnce()
                 val storeMap = mutableMapOf<String, Long>()
 
@@ -320,39 +366,34 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     storeMap[name] = storeId
                 }
 
+                // إضافة المعاملات
                 var count = 0
                 for (i in 0 until transArray.length()) {
-                    val t = transArray.getJSONObject(i)
-                    val storeName = t.getString("n")
-                    val storeId = storeMap[storeName] ?: continue
+                    try {
+                        val t = transArray.getJSONObject(i)
+                        val storeName = t.getString("n")
+                        val storeId = storeMap[storeName] ?: continue
 
-                    repository.insertTransaction(Transaction(
-                        storeId = storeId,
-                        amount = t.getDouble("a"),
-                        description = t.optString("d", ""),
-                        type = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT,
-                        date = t.getLong("dt"),
-                        note = t.optString("nt", ""),
-                        senderTag = senderName
-                    ))
-                    count++
+                        repository.insertTransaction(Transaction(
+                            storeId = storeId,
+                            amount = t.getDouble("a"),
+                            description = t.optString("d", ""),
+                            type = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT,
+                            date = t.getLong("dt"),
+                            note = t.optString("nt", ""),
+                            senderTag = senderName
+                        ))
+                        count++
+                    } catch (e: Exception) {
+                        // تخطي معاملة خاطئة
+                    }
                 }
 
                 _message.value = "تم استيراد $count معاملة من $senderName"
+
             } catch (e: Exception) {
-                _message.value = "خطأ في البيانات: ${e.message}"
+                _message.value = "خطأ: ${e.message}"
             }
         }
     }
-
-    fun formatAmount(amount: Double): String {
-        return if (amount == amount.toLong().toDouble()) "%.0f".format(amount) else "%.2f".format(amount)
-    }
-
-    data class StoreWithDebt(
-        val store: Store,
-        val totalPurchases: Double,
-        val totalPayments: Double,
-        val debt: Double
-    )
-}
+                
