@@ -3,6 +3,7 @@ package com.nadrlab.baitbudget.data.db
 import androidx.room.*
 import com.nadrlab.baitbudget.data.model.Transaction
 import com.nadrlab.baitbudget.data.model.TransactionType
+import com.nadrlab.baitbudget.data.model.UserSummaryData
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -34,6 +35,17 @@ interface TransactionDao {
 
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'PAYMENT'")
     fun getAllTimePayments(): Flow<Double>
+
+    @Query("""
+        SELECT senderTag,
+               COALESCE(SUM(CASE WHEN type = 'PURCHASE' THEN amount ELSE 0 END), 0) as totalPurchases,
+               COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0) as totalPayments
+        FROM transactions
+        WHERE senderTag != ''
+        GROUP BY senderTag
+        ORDER BY senderTag ASC
+    """)
+    fun getUserSummaries(): Flow<List<UserSummaryData>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: Transaction): Long
