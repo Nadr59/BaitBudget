@@ -179,8 +179,7 @@ fun AddStoreDialog(onDismiss: () -> Unit, onConfirm: (String, String, String) ->
             Column {
                 OutlinedTextField(
                     value = name, onValueChange = { name = it },
-                    label = { Text("اسم البقالة") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("اسم البقالة") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray
@@ -189,8 +188,7 @@ fun AddStoreDialog(onDismiss: () -> Unit, onConfirm: (String, String, String) ->
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = phone, onValueChange = { phone = it },
-                    label = { Text("رقم الهاتف (اختياري)") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("رقم الهاتف (اختياري)") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray
@@ -199,8 +197,7 @@ fun AddStoreDialog(onDismiss: () -> Unit, onConfirm: (String, String, String) ->
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = address, onValueChange = { address = it },
-                    label = { Text("العنوان (اختياري)") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("العنوان (اختياري)") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray
