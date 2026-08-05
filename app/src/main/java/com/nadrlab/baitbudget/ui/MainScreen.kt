@@ -55,7 +55,7 @@ fun MainScreen(viewModel: BudgetViewModel) {
         }
     }
 
-    val totalDebt = storesWithDebt.sumOf { it.debt }
+        val totalDebt = storesWithDebt.fold(0.0) { acc, item -> acc + item.debt }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
