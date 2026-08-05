@@ -244,20 +244,52 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-        // ═══════════════════════════════
-    // الاستيراد من الحافظة (بدون suspend)
+            // ═══════════════════════════════
+    // الاستيراد من الحافظة (محسّن)
     // ═══════════════════════════════
     fun importFromClipboard(clipboardText: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val regex = Regex("BB2::(\\S+)")
-                val match = regex.find(clipboardText)
-                if (match == null) {
+                // تنظيف النص من رموز واتساب الخفية
+                val cleanText = clipboardText
+                    .replace(Regex("[\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]"), "")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+
+                // البحث عن العلامة
+                val markerIndex = cleanText.indexOf("BB2::")
+                if (markerIndex < 0) {
+                    _message.value = "لم يتم العثور على بيانات. تأكد من نسخ الرسالة كاملة"
+                    return@launch
+                }
+
+                // استخراج البيانات بعد العلامة
+                val dataStart = markerIndex + 5
+                val remaining = cleanText.substring(dataStart)
+
+                val base64Builder = StringBuilder()
+                for (line in remaining.split("\n")) {
+                    val trimmed = line.trim()
+                    // توقف عند الخط الفاصل
+                    if (trimmed.contains("────") || trimmed.contains("────")) {
+                        if (base64Builder.isNotEmpty()) break
+                        continue
+                    }
+                    // تجاهل الأسطر القصيرة (رسائل وصفية)
+                    if (trimmed.length < 10 && base64Builder.isEmpty()) continue
+                    // إضافة البيانات
+                    if (trimmed.isNotBlank()) {
+                        base64Builder.append(trimmed)
+                    }
+                }
+
+                val base64 = base64Builder.toString().trim()
+                if (base64.isBlank()) {
                     _message.value = "لم يتم العثور على بيانات صالحة"
                     return@launch
                 }
 
-                val base64 = match.groupValues[1]
+                // فك التشفير
                 val jsonString = String(
                     Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE),
                     Charsets.UTF_8
@@ -267,6 +299,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 val storesArray = json.getJSONArray("s")
                 val transArray = json.getJSONArray("t")
 
+                // مطابقة البقالات
                 val currentStores = db.storeDao().getAllStoresOnce()
                 val storeMap = mutableMapOf<String, Long>()
 
@@ -285,6 +318,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     storeMap[name] = storeId
                 }
 
+                // إضافة المعاملات
                 var count = 0
                 for (i in 0 until transArray.length()) {
                     val t = transArray.getJSONObject(i)
@@ -308,6 +342,8 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
+                
                 
 
     // ═══ تنسيق المبالغ ═══
