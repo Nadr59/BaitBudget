@@ -244,17 +244,18 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+        // ═══════════════════════════════
+    // الاستيراد من الحافظة (بدون suspend)
     // ═══════════════════════════════
-    // الاستيراد من الحافظة
-    // ═══════════════════════════════
-    suspend fun importFromClipboard(clipboardText: String): Result<Int> {
-        return withContext(Dispatchers.IO) {
+    fun importFromClipboard(clipboardText: String) {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val regex = Regex("BB2::(\\S+)")
                 val match = regex.find(clipboardText)
-                    ?: return@withContext Result.failure(
-                        Exception("لم يتم العثور على بيانات. تأكد من نسخ الرسالة كاملة")
-                    )
+                if (match == null) {
+                    _message.value = "لم يتم العثور على بيانات صالحة"
+                    return@launch
+                }
 
                 val base64 = match.groupValues[1]
                 val jsonString = String(
@@ -266,7 +267,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 val storesArray = json.getJSONArray("s")
                 val transArray = json.getJSONArray("t")
 
-                // قراءة البقالات الحالية من Room مباشرة
                 val currentStores = db.storeDao().getAllStoresOnce()
                 val storeMap = mutableMapOf<String, Long>()
 
@@ -285,7 +285,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     storeMap[name] = storeId
                 }
 
-                // إضافة المعاملات
                 var count = 0
                 for (i in 0 until transArray.length()) {
                     val t = transArray.getJSONObject(i)
@@ -303,12 +302,13 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     count++
                 }
 
-                Result.success(count)
+                _message.value = "تم استيراد $count معاملة بنجاح"
             } catch (e: Exception) {
-                Result.failure(Exception("خطأ في البيانات: ${e.message}"))
+                _message.value = "خطأ في البيانات: ${e.message}"
             }
         }
     }
+                
 
     // ═══ تنسيق المبالغ ═══
     fun formatAmount(amount: Double): String {
