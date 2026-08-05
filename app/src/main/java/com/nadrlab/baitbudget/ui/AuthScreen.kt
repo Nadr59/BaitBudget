@@ -25,7 +25,6 @@ fun AuthScreen(
     var showUserLogin by remember { mutableStateOf(false) }
     var adminPassword by remember { mutableStateOf("") }
     var userName by remember { mutableStateOf("") }
-    var showError by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
 
     Column(
@@ -45,25 +44,13 @@ fun AuthScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        Text(
-            "ميزانية البيت",
-            fontSize = 32.sp,
-            color = Color(0xFF4CAF50),
-            fontWeight = FontWeight.Bold
-        )
-
+        Text("ميزانية البيت", fontSize = 32.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
         Text("BaitBudget", color = Color.Gray, fontSize = 14.sp)
 
         Spacer(Modifier.height(48.dp))
 
         if (!showAdminLogin && !showUserLogin) {
-            Text(
-                "اختر نوع الحساب",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-
+            Text("اختر نوع الحساب", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(24.dp))
 
             Button(
@@ -105,7 +92,7 @@ fun AuthScreen(
 
             OutlinedTextField(
                 value = adminPassword,
-                onValueChange = { adminPassword = it; showError = false },
+                onValueChange = { adminPassword = it },
                 label = { Text("كلمة مرور المشرف") },
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
@@ -118,24 +105,16 @@ fun AuthScreen(
                     }
                 },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFFE8C547),
-                    unfocusedBorderColor = Color.Gray,
+                    focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray,
                     cursorColor = Color(0xFFE8C547)
                 ),
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true
             )
 
-            if (showError) {
-                Spacer(Modifier.height(8.dp))
-                Text("كلمة المرور خاطئة", color = Color.Red, fontSize = 13.sp)
-            }
-
             Spacer(Modifier.height(8.dp))
             Text("كلمة المرور الافتراضية: 1234", color = Color(0xFF666666), fontSize = 11.sp)
-
             Spacer(Modifier.height(16.dp))
 
             Button(
@@ -143,31 +122,29 @@ fun AuthScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8C547)),
                 shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("دخول", color = Color.Black, fontSize = 16.sp)
-            }
+            ) { Text("دخول", color = Color.Black, fontSize = 16.sp) }
 
             Spacer(Modifier.height(8.dp))
-
-            TextButton(onClick = { showAdminLogin = false; adminPassword = ""; showError = false }) {
+            TextButton(onClick = { showAdminLogin = false; adminPassword = "" }) {
                 Text("رجوع", color = Color.Gray)
             }
         }
 
         if (showUserLogin) {
             Text("دخول المستخدم", color = Color(0xFF4CAF50), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("اسمك سيُستخدم لتعريف معاملاتك", color = Color.Gray, fontSize = 12.sp)
+            Spacer(Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = userName,
                 onValueChange = { userName = it },
-                label = { Text("اسم المستخدم (اختياري)") },
+                label = { Text("اسمك (مطلوب)") },
+                placeholder = { Text("مثال: أحمد") },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFF4CAF50),
-                    unfocusedBorderColor = Color.Gray,
+                    focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.Gray,
                     cursorColor = Color(0xFF4CAF50)
                 ),
                 shape = RoundedCornerShape(12.dp),
@@ -177,16 +154,23 @@ fun AuthScreen(
             Spacer(Modifier.height(16.dp))
 
             Button(
-                onClick = { onUserLogin(userName.ifBlank { "مستخدم" }) },
+                onClick = { if (userName.isNotBlank()) onUserLogin(userName.trim()) },
+                enabled = userName.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50),
+                    disabledContainerColor = Color(0xFF333333)
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("دخول", color = Color.White, fontSize = 16.sp)
+                Text(
+                    "دخول",
+                    color = if (userName.isNotBlank()) Color.White else Color.Gray,
+                    fontSize = 16.sp
+                )
             }
 
             Spacer(Modifier.height(8.dp))
-
             TextButton(onClick = { showUserLogin = false; userName = "" }) {
                 Text("رجوع", color = Color.Gray)
             }
