@@ -343,55 +343,31 @@ fun HomeTab(
             Spacer(Modifier.height(12.dp))
         }
 
-                // ═══ زر الاستيراد (للمشرف) ═══
+                        // ═══ زر الاستيراد (للمشرف) ═══
         if (isAdmin) {
             Button(
                 onClick = {
-                    isImporting = true
-                    scope.launch {
-                        try {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = clipboard.primaryClip
-                            val clipText = clip?.getItemAt(0)?.text?.toString() ?: ""
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
 
-                            if (clipText.isBlank()) {
-                                snackbarHostState.showSnackbar("الحافظة فاضية! انسخ رسالة الواتساب أولاً")
-                                isImporting = false
-                                return@launch
-                            }
-
-                            if (!clipText.contains("BB2::")) {
-                                snackbarHostState.showSnackbar("لا توجد بيانات صالحة في الحافظة")
-                                isImporting = false
-                                return@launch
-                            }
-
-                            val result = viewModel.importFromClipboard(clipText)
-                            result.fold(
-                                onSuccess = { count ->
-                                    snackbarHostState.showSnackbar("تم استيراد $count معاملة بنجاح")
-                                },
-                                onFailure = { e ->
-                                    snackbarHostState.showSnackbar("خطأ: ${e.message}")
-                                }
-                            )
-                        } catch (e: Exception) {
-                            snackbarHostState.showSnackbar("خطأ: ${e.message}")
-                        }
-                        isImporting = false
+                    if (clipText.isBlank()) {
+                        scope.launch { snackbarHostState.showSnackbar("الحافظة فاضية! انسخ رسالة الواتساب أولاً") }
+                        return@Button
                     }
+
+                    if (!clipText.contains("BB2::")) {
+                        scope.launch { snackbarHostState.showSnackbar("لا توجد بيانات صالحة. انسخ الرسالة كاملة") }
+                        return@Button
+                    }
+
+                    viewModel.importFromClipboard(clipText)
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isImporting,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
                 shape = RoundedCornerShape(12.dp),
                 contentPadding = PaddingValues(vertical = 14.dp)
             ) {
-                if (isImporting) {
-                    CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Default.FileDownload, null, tint = Color.White)
-                }
+                Icon(Icons.Default.FileDownload, null, tint = Color.White)
                 Spacer(Modifier.width(8.dp))
                 Text("📥 استيراد من حافظة الواتساب", color = Color.White, fontSize = 14.sp)
             }
@@ -406,7 +382,6 @@ fun HomeTab(
 
             Spacer(Modifier.height(12.dp))
         }
-        
           
 
         // ═══ ملخص الأسبوع ═══
