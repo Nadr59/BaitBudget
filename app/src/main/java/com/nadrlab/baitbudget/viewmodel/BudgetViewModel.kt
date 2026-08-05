@@ -24,16 +24,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     private val db = AppDatabase.getDatabase(application)
     private val repository = BudgetRepository(db.storeDao(), db.transactionDao())
     val userPrefs = UserPrefs(application)
-    // ═══ تحويل الأرقام العربية إلى إنجليزية ═══
-    private fun normalizeNumbers(text: String): String {
-        return text
-            .replace('٠', '0').replace('١', '1').replace('٢', '2')
-            .replace('٣', '3').replace('٤', '4').replace('٥', '5')
-            .replace('٦', '6').replace('٧', '7').replace('٨', '8')
-            .replace('٩', '9')
-            .replace('٫', '.').replace('،', ',')
-    }
-    // ═══ حالة المصادقة ═══
+
     private val _isLoggedIn = MutableStateFlow(userPrefs.isLoggedIn)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
 
@@ -43,7 +34,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     private val _userName = MutableStateFlow(userPrefs.userName)
     val userName: StateFlow<String> = _userName
 
-    // ═══ البيانات ═══
     val allStores = repository.getAllStores()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -56,11 +46,9 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val allTimePayments = repository.getAllTimePayments()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    // ═══ ملخص المستخدمين (للمشرف) ═══
     val userSummaries: StateFlow<List<UserSummaryData>> = repository.getUserSummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // ═══ الشهر ═══
     private val monthStart: Long
         get() {
             val cal = Calendar.getInstance()
@@ -89,7 +77,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val monthPayments = repository.getTotalPaymentsByDateRange(monthStart, monthEnd)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    // ═══ الأسبوع ═══
     private val weekStart: Long
         get() {
             val cal = Calendar.getInstance()
@@ -107,7 +94,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val weekPayments = repository.getTotalPaymentsByDateRange(weekStart, System.currentTimeMillis())
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    // ═══ المتاجر مع الأرصدة ═══
     val storesWithDebt: StateFlow<List<StoreWithDebt>> = allStores.flatMapLatest { stores ->
         if (stores.isEmpty()) flowOf(emptyList())
         else combine(stores.map { store ->
@@ -120,40 +106,43 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }) { it.toList() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // ═══ الرسائل ═══
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
     fun onMessageShown() { _message.value = null }
 
-    // ═══════════════════════════════
-    // المصادقة
-    // ═══════════════════════════════
     fun loginAsAdmin(password: String): Boolean {
         return if (userPrefs.checkAdminPassword(password)) {
-            userPrefs.isAdmin = true; userPrefs.isLoggedIn = true; userPrefs.userName = "مشرف"
-            _isAdmin.value = true; _isLoggedIn.value = true; _userName.value = "مشرف"
+            userPrefs.isAdmin = true
+            userPrefs.isLoggedIn = true
+            userPrefs.userName = "مشرف"
+            _isAdmin.value = true
+            _isLoggedIn.value = true
+            _userName.value = "مشرف"
             true
         } else false
     }
 
     fun loginAsUser(name: String) {
-        userPrefs.isAdmin = false; userPrefs.isLoggedIn = true; userPrefs.userName = name
-        _isAdmin.value = false; _isLoggedIn.value = true; _userName.value = name
+        userPrefs.isAdmin = false
+        userPrefs.isLoggedIn = true
+        userPrefs.userName = name
+        _isAdmin.value = false
+        _isLoggedIn.value = true
+        _userName.value = name
     }
 
     fun logout() {
         userPrefs.logout()
-        _isLoggedIn.value = false; _isAdmin.value = false; _userName.value = ""
+        _isLoggedIn.value = false
+        _isAdmin.value = false
+        _userName.value = ""
     }
 
     fun changeAdminPassword(oldPass: String, newPass: String): Boolean {
         return userPrefs.changeAdminPassword(oldPass, newPass)
     }
 
-    // ═══════════════════════════════
-    // المتاجر
-    // ═══════════════════════════════
     fun addStore(name: String, phone: String, address: String) {
         viewModelScope.launch {
             repository.insertStore(Store(name = name, phone = phone, address = address))
@@ -168,9 +157,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ═══════════════════════════════
-    // المعاملات (مع senderTag)
-    // ═══════════════════════════════
     fun addPurchase(storeId: Long, amount: Double, description: String, note: String = "") {
         viewModelScope.launch {
             repository.insertTransaction(
@@ -204,9 +190,14 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ═══════════════════════════════
-    // التصدير
-    // ═══════════════════════════════
+    fun normalizeNumbers(text: String): String {
+        return text
+            .replace('٠', '0').replace('١', '1').replace('٢', '2')
+            .replace('٣', '3').replace('٤', '4').replace('٥', '5')
+            .replace('٦', '6').replace('٧', '7').replace('٨', '8')
+            .replace('٩', '9').replace('٫', '.')
+    }
+
     suspend fun exportDataForSharing(): String {
         val stores = allStores.value
         val transactions = allTransactions.value
@@ -248,14 +239,14 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         )
 
         val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar"))
-        val purchasesCount = transactions.count { it.type == TransactionType.PURCHASE }
-        val paymentsCount = transactions.count { it.type == TransactionType.PAYMENT }
+        val pCount = transactions.count { it.type == TransactionType.PURCHASE }
+        val yCount = transactions.count { it.type == TransactionType.PAYMENT }
 
         return buildString {
             appendLine("📊 بيانات ميزانية البيت")
             appendLine("👤 المرسل: ${_userName.value}")
             appendLine("📅 ${dateFormat.format(Date())}")
-            appendLine("🛒 مشتريات: $purchasesCount | 💰 مدفوعات: $paymentsCount")
+            appendLine("🛒 مشتريات: $pCount | 💰 مدفوعات: $yCount")
             appendLine("────────────────")
             appendLine("BB2::$base64")
             appendLine("────────────────")
@@ -263,40 +254,29 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-        // ═══════════════════════════════
-    // الاستيراد (محسّن ومُصحح)
-    // ═══════════════════════════════
     fun importFromClipboard(clipboardText: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // تنظيف النص
                 val cleanText = clipboardText
                     .replace(Regex("[\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]"), "")
-                    .replace("\r\n", "\n")
-                    .replace("\r", "\n")
+                    .replace("\r\n", "\n").replace("\r", "\n")
 
-                // البحث عن العلامة
                 val markerIndex = cleanText.indexOf("BB2::")
                 if (markerIndex < 0) {
                     _message.value = "لم يتم العثور على بيانات صالحة"
                     return@launch
                 }
 
-                // استخراج كل النص بعد العلامة
                 val afterMarker = cleanText.substring(markerIndex + 5)
-
-                // جمع كل الأحرف القابلة لفك التشفير من Base64
                 val base64Chars = StringBuilder()
+
                 for (line in afterMarker.split("\n")) {
                     val trimmed = line.trim()
-                    // توقف عند الفاصل
-                    if (trimmed.startsWith("────") || trimmed.startsWith("────") || trimmed.startsWith("---")) {
+                    if (trimmed.startsWith("────") || trimmed.startsWith("---")) {
                         if (base64Chars.isNotEmpty()) break
                         continue
                     }
-                    // تجاهل النصوص القصيرة (رسائل وصفية)
                     if (trimmed.length < 20 && base64Chars.isEmpty() && !trimmed.contains("=")) continue
-                    // جمع أحرف Base64 فقط
                     for (ch in trimmed) {
                         if (ch.isLetterOrDigit() || ch == '+' || ch == '/' || ch == '-' || ch == '_' || ch == '=') {
                             base64Chars.append(ch)
@@ -306,48 +286,34 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
                 val base64 = base64Chars.toString().trim()
                 if (base64.length < 20) {
-                    _message.value = "بيانات غير كافية (${base64.length} حرف)"
+                    _message.value = "بيانات غير كافية"
                     return@launch
                 }
 
-                // فك التشفير
                 val decoded = try {
                     Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE)
                 } catch (e: Exception) {
-                    // محاولة بخيارات مختلفة
-                    try {
-                        Base64.decode(base64, Base64.DEFAULT)
-                    } catch (e2: Exception) {
-                        _message.value = "لا يمكن فك تشفير البيانات: ${e2.message}"
+                    try { Base64.decode(base64, Base64.DEFAULT) }
+                    catch (e2: Exception) {
+                        _message.value = "لا يمكن فك تشفير البيانات"
                         return@launch
                     }
                 }
 
-                val jsonString = String(decoded, Charsets.UTF_8)
-
-                // تحليل JSON
-                val json = try {
-                    JSONObject(jsonString)
-                } catch (e: Exception) {
-                    _message.value = "بيانات JSON غير صالحة"
+                val json = try { JSONObject(String(decoded, Charsets.UTF_8)) }
+                catch (e: Exception) {
+                    _message.value = "بيانات غير صالحة"
                     return@launch
                 }
 
                 val senderName = json.optString("u", "غير معروف")
-
-                // استخراج البقالات
                 val storesArray = try { json.getJSONArray("s") } catch (e: Exception) {
-                    _message.value = "لا توجد بقالات في البيانات"
-                    return@launch
+                    _message.value = "لا توجد بقالات"; return@launch
                 }
-
-                // استخراج المعاملات
                 val transArray = try { json.getJSONArray("t") } catch (e: Exception) {
-                    _message.value = "لا توجد معاملات في البيانات"
-                    return@launch
+                    _message.value = "لا توجد معاملات"; return@launch
                 }
 
-                // مطابقة البقالات
                 val currentStores = db.storeDao().getAllStoresOnce()
                 val storeMap = mutableMapOf<String, Long>()
 
@@ -356,24 +322,19 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     val name = s.getString("n")
                     val phone = s.optString("p", "")
                     val address = s.optString("a", "")
-
-                    val existing = currentStores.find {
-                        it.name.equals(name, ignoreCase = true)
-                    }
+                    val existing = currentStores.find { it.name.equals(name, ignoreCase = true) }
                     val storeId = existing?.id ?: repository.insertStore(
                         Store(name = name, phone = phone, address = address)
                     )
                     storeMap[name] = storeId
                 }
 
-                // إضافة المعاملات
                 var count = 0
                 for (i in 0 until transArray.length()) {
                     try {
                         val t = transArray.getJSONObject(i)
                         val storeName = t.getString("n")
                         val storeId = storeMap[storeName] ?: continue
-
                         repository.insertTransaction(Transaction(
                             storeId = storeId,
                             amount = t.getDouble("a"),
@@ -384,16 +345,24 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                             senderTag = senderName
                         ))
                         count++
-                    } catch (e: Exception) {
-                        // تخطي معاملة خاطئة
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 _message.value = "تم استيراد $count معاملة من $senderName"
-
             } catch (e: Exception) {
                 _message.value = "خطأ: ${e.message}"
             }
         }
     }
-}            
+
+    fun formatAmount(amount: Double): String {
+        return if (amount == amount.toLong().toDouble()) "%.0f".format(amount) else "%.2f".format(amount)
+    }
+
+    data class StoreWithDebt(
+        val store: Store,
+        val totalPurchases: Double,
+        val totalPayments: Double,
+        val debt: Double
+    )
+}
