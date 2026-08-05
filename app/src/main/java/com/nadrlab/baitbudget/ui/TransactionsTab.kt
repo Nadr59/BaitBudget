@@ -3,6 +3,7 @@ package com.nadrlab.baitbudget.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,6 +22,7 @@ import com.nadrlab.baitbudget.viewmodel.BudgetViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsTab(
     viewModel: BudgetViewModel,
@@ -28,9 +30,24 @@ fun TransactionsTab(
     onAddPurchase: () -> Unit,
     onAddPayment: () -> Unit
 ) {
-    val transactions by viewModel.allTransactions.collectAsState()
+    val allTransactions by viewModel.allTransactions.collectAsState()
     val stores by viewModel.allStores.collectAsState()
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar")) }
+
+    var selectedFilter by remember { mutableStateOf("الكل") }
+
+    val senderTags = remember(allTransactions) {
+        allTransactions
+            .map { it.senderTag }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }
+
+    val transactions = remember(allTransactions, selectedFilter) {
+        if (selectedFilter == "الكل") allTransactions
+        else allTransactions.filter { it.senderTag == selectedFilter }
+    }
 
     Column(
         modifier = Modifier
@@ -62,14 +79,60 @@ fun TransactionsTab(
             }
         }
 
+        // ═══ فلتر المستخدمين (للمشرف فقط) ═══
+        if (isAdmin && senderTags.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item {
+                    FilterChip(
+                        selected = selectedFilter == "الكل",
+                        onClick = { selectedFilter = "الكل" },
+                        label = { Text("الكل", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF4CAF50),
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFF1A1A1A),
+                            labelColor = Color.Gray
+                        )
+                    )
+                }
+                items(senderTags) { tag ->
+                    FilterChip(
+                        selected = selectedFilter == tag,
+                        onClick = { selectedFilter = tag },
+                        label = { Text(tag, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF2196F3),
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFF1A1A1A),
+                            labelColor = Color.Gray
+                        )
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(12.dp))
+
+        if (selectedFilter != "الكل") {
+            Text(
+                "عرض: $selectedFilter (${transactions.size})",
+                color = Color(0xFF2196F3),
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(4.dp))
+        }
 
         if (transactions.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Receipt, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(8.dp))
-                    Text("لا توجد معاملات", color = Color.Gray, fontSize = 16.sp)
+                    Text(
+                        if (selectedFilter == "الكل") "لا توجد معاملات" else "لا توجد معاملات لـ $selectedFilter",
+                        color = Color.Gray, fontSize = 16.sp
+                    )
                 }
             }
         } else {
@@ -85,7 +148,8 @@ fun TransactionsTab(
                         dateFormatted = dateFormat.format(Date(transaction.date)),
                         formatAmount = viewModel::formatAmount,
                         onDelete = { viewModel.deleteTransaction(transaction) },
-                        isAdmin = isAdmin
+                        isAdmin = isAdmin,
+                        showSender = isAdmin && transaction.senderTag.isNotBlank()
                     )
                 }
             }
@@ -100,7 +164,8 @@ fun TransactionCard(
     dateFormatted: String,
     formatAmount: (Double) -> String,
     onDelete: () -> Unit,
-    isAdmin: Boolean = true
+    isAdmin: Boolean = true,
+    showSender: Boolean = false
 ) {
     val isPurchase = transaction.type == TransactionType.PURCHASE
 
@@ -125,6 +190,9 @@ fun TransactionCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(storeName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                if (showSender) {
+                    Text("👤 ${transaction.senderTag}", color = Color(0xFF2196F3), fontSize = 11.sp)
                 }
                 if (transaction.description.isNotBlank()) {
                     Text(transaction.description, color = Color.Gray, fontSize = 12.sp)
