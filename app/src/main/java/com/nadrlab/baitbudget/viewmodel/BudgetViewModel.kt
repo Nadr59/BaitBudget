@@ -10,10 +10,10 @@ import com.nadrlab.baitbudget.data.db.AppDatabase
 import com.nadrlab.baitbudget.data.model.Store
 import com.nadrlab.baitbudget.data.model.Transaction
 import com.nadrlab.baitbudget.data.model.TransactionType
+import com.nadrlab.baitbudget.data.model.UserSummaryData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -47,6 +47,10 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     val allTimePayments = repository.getAllTimePayments()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    // ═══ ملخص المستخدمين (للمشرف) ═══
+    val userSummaries: StateFlow<List<UserSummaryData>> = repository.getUserSummaries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ═══ الشهر ═══
     private val monthStart: Long
@@ -157,12 +161,16 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // ═══════════════════════════════
-    // المعاملات
+    // المعاملات (مع senderTag)
     // ═══════════════════════════════
     fun addPurchase(storeId: Long, amount: Double, description: String, note: String = "") {
         viewModelScope.launch {
             repository.insertTransaction(
-                Transaction(storeId = storeId, amount = amount, description = description, type = TransactionType.PURCHASE, note = note)
+                Transaction(
+                    storeId = storeId, amount = amount, description = description,
+                    type = TransactionType.PURCHASE, note = note,
+                    senderTag = _userName.value
+                )
             )
             _message.value = "تم تسجيل الشراء: ${formatAmount(amount)}"
         }
@@ -171,7 +179,11 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     fun addPayment(storeId: Long, amount: Double, description: String, note: String = "") {
         viewModelScope.launch {
             repository.insertTransaction(
-                Transaction(storeId = storeId, amount = amount, description = description, type = TransactionType.PAYMENT, note = note)
+                Transaction(
+                    storeId = storeId, amount = amount, description = description,
+                    type = TransactionType.PAYMENT, note = note,
+                    senderTag = _userName.value
+                )
             )
             _message.value = "تم تسجيل الدفع: ${formatAmount(amount)}"
         }
@@ -184,9 +196,8 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    
-        // ═══════════════════════════════
-    // التصدير عبر الواتساب
+    // ═══════════════════════════════
+    // التصدير
     // ═══════════════════════════════
     suspend fun exportDataForSharing(): String {
         val stores = allStores.value
@@ -244,43 +255,35 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-            // ═══════════════════════════════
-    // الاستيراد من الحافظة (محسّن)
+    // ═══════════════════════════════
+    // الاستيراد (مع senderTag)
     // ═══════════════════════════════
     fun importFromClipboard(clipboardText: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // تنظيف النص من رموز واتساب الخفية
                 val cleanText = clipboardText
                     .replace(Regex("[\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]"), "")
                     .replace("\r\n", "\n")
                     .replace("\r", "\n")
 
-                // البحث عن العلامة
                 val markerIndex = cleanText.indexOf("BB2::")
                 if (markerIndex < 0) {
-                    _message.value = "لم يتم العثور على بيانات. تأكد من نسخ الرسالة كاملة"
+                    _message.value = "لم يتم العثور على بيانات صالحة"
                     return@launch
                 }
 
-                // استخراج البيانات بعد العلامة
                 val dataStart = markerIndex + 5
                 val remaining = cleanText.substring(dataStart)
 
                 val base64Builder = StringBuilder()
                 for (line in remaining.split("\n")) {
                     val trimmed = line.trim()
-                    // توقف عند الخط الفاصل
                     if (trimmed.contains("────") || trimmed.contains("────")) {
                         if (base64Builder.isNotEmpty()) break
                         continue
                     }
-                    // تجاهل الأسطر القصيرة (رسائل وصفية)
                     if (trimmed.length < 10 && base64Builder.isEmpty()) continue
-                    // إضافة البيانات
-                    if (trimmed.isNotBlank()) {
-                        base64Builder.append(trimmed)
-                    }
+                    if (trimmed.isNotBlank()) base64Builder.append(trimmed)
                 }
 
                 val base64 = base64Builder.toString().trim()
@@ -289,17 +292,16 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     return@launch
                 }
 
-                // فك التشفير
                 val jsonString = String(
                     Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE),
                     Charsets.UTF_8
                 )
                 val json = JSONObject(jsonString)
 
+                val senderName = json.optString("u", "غير معروف")
                 val storesArray = json.getJSONArray("s")
                 val transArray = json.getJSONArray("t")
 
-                // مطابقة البقالات
                 val currentStores = db.storeDao().getAllStoresOnce()
                 val storeMap = mutableMapOf<String, Long>()
 
@@ -318,7 +320,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                     storeMap[name] = storeId
                 }
 
-                // إضافة المعاملات
                 var count = 0
                 for (i in 0 until transArray.length()) {
                     val t = transArray.getJSONObject(i)
@@ -331,22 +332,19 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                         description = t.optString("d", ""),
                         type = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT,
                         date = t.getLong("dt"),
-                        note = t.optString("nt", "")
+                        note = t.optString("nt", ""),
+                        senderTag = senderName
                     ))
                     count++
                 }
 
-                _message.value = "تم استيراد $count معاملة بنجاح"
+                _message.value = "تم استيراد $count معاملة من $senderName"
             } catch (e: Exception) {
                 _message.value = "خطأ في البيانات: ${e.message}"
             }
         }
     }
 
-                
-                
-
-    // ═══ تنسيق المبالغ ═══
     fun formatAmount(amount: Double): String {
         return if (amount == amount.toLong().toDouble()) "%.0f".format(amount) else "%.2f".format(amount)
     }
