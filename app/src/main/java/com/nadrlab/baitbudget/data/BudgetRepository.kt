@@ -4,6 +4,7 @@ import com.nadrlab.baitbudget.data.db.StoreDao
 import com.nadrlab.baitbudget.data.db.TransactionDao
 import com.nadrlab.baitbudget.data.model.Store
 import com.nadrlab.baitbudget.data.model.Transaction
+import com.nadrlab.baitbudget.data.model.TransactionType
 import com.nadrlab.baitbudget.data.model.UserSummaryData
 import kotlinx.coroutines.flow.Flow
 
@@ -29,6 +30,11 @@ class BudgetRepository(
     fun getAllTimePayments(): Flow<Double> = transactionDao.getAllTimePayments()
     fun getTotalPurchasesByDateRange(start: Long, end: Long): Flow<Double> = transactionDao.getTotalPurchasesByDateRange(start, end)
     fun getTotalPaymentsByDateRange(start: Long, end: Long): Flow<Double> = transactionDao.getTotalPaymentsByDateRange(start, end)
-
     fun getUserSummaries(): Flow<List<UserSummaryData>> = transactionDao.getUserSummaries()
+
+    // ═══ التزامن ═══
+    suspend fun getUnexportedTransactions(): List<Transaction> = transactionDao.getUnexportedTransactions()
+    suspend fun markAllAsExported() = transactionDao.markAllAsExported()
+    suspend fun countDuplicate(storeId: Long, amount: Double, type: TransactionType, date: Long): Int =
+        transactionDao.countDuplicate(storeId, amount, type, date)
 }
