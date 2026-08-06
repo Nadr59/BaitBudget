@@ -31,5 +31,6 @@ data class Transaction(
     val type: TransactionType,
     val date: Long = System.currentTimeMillis(),
     val note: String = "",
-    val senderTag: String = ""
+    val senderTag: String = "",
+    val exported: Boolean = false
 )
