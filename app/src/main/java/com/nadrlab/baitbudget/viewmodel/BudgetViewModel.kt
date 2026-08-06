@@ -1,3 +1,4 @@
+
 package com.nadrlab.baitbudget.viewmodel
 
 import android.app.Application
@@ -49,51 +50,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     val userSummaries: StateFlow<List<UserSummaryData>> = repository.getUserSummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val monthStart: Long
-        get() {
-            val cal = Calendar.getInstance()
-            cal.set(Calendar.DAY_OF_MONTH, 1)
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
-            return cal.timeInMillis
-        }
-
-    private val monthEnd: Long
-        get() {
-            val cal = Calendar.getInstance()
-            cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
-            cal.set(Calendar.HOUR_OF_DAY, 23)
-            cal.set(Calendar.MINUTE, 59)
-            cal.set(Calendar.SECOND, 59)
-            cal.set(Calendar.MILLISECOND, 999)
-            return cal.timeInMillis
-        }
-
-    val monthPurchases = repository.getTotalPurchasesByDateRange(monthStart, monthEnd)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    val monthPayments = repository.getTotalPaymentsByDateRange(monthStart, monthEnd)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    private val weekStart: Long
-        get() {
-            val cal = Calendar.getInstance()
-            cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
-            return cal.timeInMillis
-        }
-
-    val weekPurchases = repository.getTotalPurchasesByDateRange(weekStart, System.currentTimeMillis())
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    val weekPayments = repository.getTotalPaymentsByDateRange(weekStart, System.currentTimeMillis())
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
     val storesWithDebt: StateFlow<List<StoreWithDebt>> = allStores.flatMapLatest { stores ->
         if (stores.isEmpty()) flowOf(emptyList())
         else combine(stores.map { store ->
@@ -113,30 +69,20 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     fun loginAsAdmin(password: String): Boolean {
         return if (userPrefs.checkAdminPassword(password)) {
-            userPrefs.isAdmin = true
-            userPrefs.isLoggedIn = true
-            userPrefs.userName = "مشرف"
-            _isAdmin.value = true
-            _isLoggedIn.value = true
-            _userName.value = "مشرف"
+            userPrefs.isAdmin = true; userPrefs.isLoggedIn = true; userPrefs.userName = "مشرف"
+            _isAdmin.value = true; _isLoggedIn.value = true; _userName.value = "مشرف"
             true
         } else false
     }
 
     fun loginAsUser(name: String) {
-        userPrefs.isAdmin = false
-        userPrefs.isLoggedIn = true
-        userPrefs.userName = name
-        _isAdmin.value = false
-        _isLoggedIn.value = true
-        _userName.value = name
+        userPrefs.isAdmin = false; userPrefs.isLoggedIn = true; userPrefs.userName = name
+        _isAdmin.value = false; _isLoggedIn.value = true; _userName.value = name
     }
 
     fun logout() {
         userPrefs.logout()
-        _isLoggedIn.value = false
-        _isAdmin.value = false
-        _userName.value = ""
+        _isLoggedIn.value = false; _isAdmin.value = false; _userName.value = ""
     }
 
     fun changeAdminPassword(oldPass: String, newPass: String): Boolean {
@@ -198,18 +144,16 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             .replace('٩', '9').replace('٫', '.')
     }
 
-    
-        // ═══════════════════════════════
-    // التصدير (يقرأ من قاعدة البيانات مباشرة)
     // ═══════════════════════════════
-    
-    // ═══════════════════════════════
-    // التصدير (BB2:: مع قراءة مباشرة من Room)
+    // التصدير (فقط المعاملات الجديدة)
     // ═══════════════════════════════
     suspend fun exportDataForSharing(): String {
-        // نقرأ مباشرة من قاعدة البيانات
         val stores = db.storeDao().getAllStoresOnce()
-        val transactions = db.transactionDao().getAllTransactionsOnce()
+        val transactions = db.transactionDao().getUnexportedTransactions()
+
+        if (transactions.isEmpty()) {
+            return "لا توجد معاملات جديدة للتصدير"
+        }
 
         val json = JSONObject().apply {
             put("app", "BaitBudget")
@@ -247,6 +191,9 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             Base64.NO_WRAP or Base64.URL_SAFE
         )
 
+        // تحديد المعاملات كمُصدَّرة
+        db.transactionDao().markAllAsExported()
+
         val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar"))
         val pCount = transactions.count { it.type == TransactionType.PURCHASE }
         val yCount = transactions.count { it.type == TransactionType.PAYMENT }
@@ -262,6 +209,10 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             appendLine("📥 انسخ هذه الرسالة واضغط استيراد")
         }
     }
+
+    // ═══════════════════════════════
+    // الاستيراد (مع فحص التكرار)
+    // ═══════════════════════════════
     fun importFromClipboard(clipboardText: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -338,25 +289,43 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 var count = 0
+                var skipped = 0
                 for (i in 0 until transArray.length()) {
                     try {
                         val t = transArray.getJSONObject(i)
                         val storeName = t.getString("n")
                         val storeId = storeMap[storeName] ?: continue
+                        val amount = t.getDouble("a")
+                        val transType = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT
+                        val date = t.getLong("dt")
+
+                        // ═══ فحص التكرار ═══
+                        val existing = repository.countDuplicate(storeId, amount, transType, date)
+                        if (existing > 0) {
+                            skipped++
+                            continue
+                        }
+
                         repository.insertTransaction(Transaction(
                             storeId = storeId,
-                            amount = t.getDouble("a"),
+                            amount = amount,
                             description = t.optString("d", ""),
-                            type = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT,
-                            date = t.getLong("dt"),
+                            type = transType,
+                            date = date,
                             note = t.optString("nt", ""),
-                            senderTag = senderName
+                            senderTag = senderName,
+                            exported = true
                         ))
                         count++
                     } catch (_: Exception) {}
                 }
 
-                _message.value = "تم استيراد $count معاملة من $senderName"
+                val msg = buildString {
+                    append("تم استيراد $count معاملة من $senderName")
+                    if (skipped > 0) append(" (تم تخطي $skipped مكررة)")
+                }
+                _message.value = msg
+
             } catch (e: Exception) {
                 _message.value = "خطأ: ${e.message}"
             }
