@@ -202,10 +202,50 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         // ═══════════════════════════════
     // التصدير (يقرأ من قاعدة البيانات مباشرة)
     // ═══════════════════════════════
+    
+    // ═══════════════════════════════
+    // التصدير (BB2:: مع قراءة مباشرة من Room)
+    // ═══════════════════════════════
     suspend fun exportDataForSharing(): String {
         // نقرأ مباشرة من قاعدة البيانات
         val stores = db.storeDao().getAllStoresOnce()
         val transactions = db.transactionDao().getAllTransactionsOnce()
+
+        val json = JSONObject().apply {
+            put("app", "BaitBudget")
+            put("v", 1)
+            put("d", System.currentTimeMillis())
+            put("u", _userName.value)
+
+            val sa = JSONArray()
+            for (store in stores) {
+                sa.put(JSONObject().apply {
+                    put("n", store.name)
+                    put("p", store.phone)
+                    put("a", store.address)
+                })
+            }
+            put("s", sa)
+
+            val ta = JSONArray()
+            for (t in transactions) {
+                val storeName = stores.find { it.id == t.storeId }?.name ?: ""
+                ta.put(JSONObject().apply {
+                    put("n", storeName)
+                    put("a", t.amount)
+                    put("d", t.description)
+                    put("t", if (t.type == TransactionType.PURCHASE) "P" else "Y")
+                    put("dt", t.date)
+                    put("nt", t.note)
+                })
+            }
+            put("t", ta)
+        }
+
+        val base64 = Base64.encodeToString(
+            json.toString().toByteArray(Charsets.UTF_8),
+            Base64.NO_WRAP or Base64.URL_SAFE
+        )
 
         val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar"))
         val pCount = transactions.count { it.type == TransactionType.PURCHASE }
@@ -217,21 +257,11 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             appendLine("📅 ${dateFormat.format(Date())}")
             appendLine("🛒 مشتريات: $pCount | 💰 مدفوعات: $yCount")
             appendLine("────────────────")
-            appendLine("BB3")
-            for (store in stores) {
-                appendLine("@s|${store.name}|${store.phone}|${store.address}")
-            }
-            for (t in transactions) {
-                val storeName = stores.find { it.id == t.storeId }?.name ?: ""
-                val type = if (t.type == TransactionType.PURCHASE) "@b" else "@p"
-                appendLine("$type|$storeName|${t.amount}|${t.description}|${t.date}|${t.note}")
-            }
-            appendLine("BB3END")
+            appendLine("BB2::$base64")
             appendLine("────────────────")
-            appendLine("📥 انسخ الرسالة واضغط استيراد")
+            appendLine("📥 انسخ هذه الرسالة واضغط استيراد")
         }
     }
-
     fun importFromClipboard(clipboardText: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
