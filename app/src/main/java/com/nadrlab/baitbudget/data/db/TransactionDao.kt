@@ -15,6 +15,14 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY date DESC")
     suspend fun getAllTransactionsOnce(): List<Transaction>
 
+    // ═══ فقط المعاملات غير المُصدَّرة ═══
+    @Query("SELECT * FROM transactions WHERE exported = 0 ORDER BY date DESC")
+    suspend fun getUnexportedTransactions(): List<Transaction>
+
+    // ═══ تحديد كل المعاملات كمُصدَّرة ═══
+    @Query("UPDATE transactions SET exported = 1 WHERE exported = 0")
+    suspend fun markAllAsExported()
+
     @Query("SELECT * FROM transactions WHERE storeId = :storeId ORDER BY date DESC")
     fun getTransactionsByStore(storeId: Long): Flow<List<Transaction>>
 
@@ -49,6 +57,13 @@ interface TransactionDao {
         ORDER BY senderTag ASC
     """)
     fun getUserSummaries(): Flow<List<UserSummaryData>>
+
+    // ═══ فحص التكرار ═══
+    @Query("""
+        SELECT COUNT(*) FROM transactions
+        WHERE storeId = :storeId AND amount = :amount AND type = :type AND date = :date
+    """)
+    suspend fun countDuplicate(storeId: Long, amount: Double, type: TransactionType, date: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: Transaction): Long
