@@ -28,15 +28,14 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: BudgetViewModel) {
-    val stores by viewModel.allStores.collectAsState()
-    val storesWithDebt by viewModel.storesWithDebt.collectAsState()
-    val monthPurchases by viewModel.monthPurchases.collectAsState()
-    val monthPayments by viewModel.monthPayments.collectAsState()
-    val weekPurchases by viewModel.weekPurchases.collectAsState()
-    val weekPayments by viewModel.weekPayments.collectAsState()
-    val isAdmin by viewModel.isAdmin.collectAsState()
-    val userName by viewModel.userName.collectAsState()
-
+        val stores by viewModel.allStores.collectAsState(initial = emptyList())
+    val storesWithDebt by viewModel.storesWithDebt.collectAsState(initial = emptyList())
+    val monthPurchases by viewModel.monthPurchases.collectAsState(initial = 0.0)
+    val monthPayments by viewModel.monthPayments.collectAsState(initial = 0.0)
+    val weekPurchases by viewModel.weekPurchases.collectAsState(initial = 0.0)
+    val weekPayments by viewModel.weekPayments.collectAsState(initial = 0.0)
+    val isAdmin by viewModel.isAdmin.collectAsState(initial = false)
+    val userName by viewModel.userName.collectAsState(initial = "")
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAddPurchase by remember { mutableStateOf(false) }
     var showAddPayment by remember { mutableStateOf(false) }
