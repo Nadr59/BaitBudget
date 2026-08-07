@@ -22,15 +22,12 @@ import java.util.*
 
 @Composable
 fun ReportsTab(viewModel: BudgetViewModel) {
-    val allTimePurchases by viewModel.allTimePurchases.collectAsState()
-    val allTimePayments by viewModel.allTimePayments.collectAsState()
-    val monthPurchases by viewModel.monthPurchases.collectAsState()
-    val monthPayments by viewModel.monthPayments.collectAsState()
-    val storesWithDebt by viewModel.storesWithDebt.collectAsState()
-    val userSummaries by viewModel.userSummaries.collectAsState()
-
-    val totalDebt = storesWithDebt.fold(0.0) { acc, item -> acc + item.debt }.coerceAtLeast(0.0)
-    val monthName = remember { SimpleDateFormat("MMMM yyyy", Locale("ar")).format(Date()) }
+        val allTimePurchases by viewModel.allTimePurchases.collectAsState(initial = 0.0)
+    val allTimePayments by viewModel.allTimePayments.collectAsState(initial = 0.0)
+    val monthPurchases by viewModel.monthPurchases.collectAsState(initial = 0.0)
+    val monthPayments by viewModel.monthPayments.collectAsState(initial = 0.0)
+    val storesWithDebt by viewModel.storesWithDebt.collectAsState(initial = emptyList())
+    val userSummaries by viewModel.userSummaries.collectAsState(initial = emptyList())
 
     Column(
         modifier = Modifier
