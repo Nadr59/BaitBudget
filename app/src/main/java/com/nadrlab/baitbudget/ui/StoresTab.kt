@@ -19,7 +19,7 @@ import com.nadrlab.baitbudget.viewmodel.BudgetViewModel
 
 @Composable
 fun StoresTab(viewModel: BudgetViewModel, isAdmin: Boolean = true) {
-    val storesWithDebt by viewModel.storesWithDebt.collectAsState()
+    val storesWithDebt by viewModel.storesWithDebt.emptyList()()
     var showAddDialog by remember { mutableStateOf(false) }
 
     Column(
