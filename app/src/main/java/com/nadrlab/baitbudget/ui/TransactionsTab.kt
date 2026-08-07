@@ -30,8 +30,8 @@ fun TransactionsTab(
     onAddPurchase: () -> Unit,
     onAddPayment: () -> Unit
 ) {
-    val allTransactions by viewModel.allTransactions.collectAsState()
-    val stores by viewModel.allStores.collectAsState()
+        val allTransactions by viewModel.allTransactions.collectAsState(initial = emptyList())
+    val stores by viewModel.allStores.collectAsState(initial = emptyList())
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar")) }
 
     var selectedFilter by remember { mutableStateOf("الكل") }
