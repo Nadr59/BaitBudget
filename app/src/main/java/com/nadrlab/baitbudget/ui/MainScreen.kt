@@ -1,4 +1,4 @@
-  package com.nadrlab.baitbudget.ui
+package com.nadrlab.baitbudget.ui
 
 import android.content.ClipboardManager
 import android.content.Context
@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nadrlab.baitbudget.data.model.TransactionType
 import com.nadrlab.baitbudget.viewmodel.BudgetViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -28,21 +29,18 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: BudgetViewModel) {
-        val stores by viewModel.allStores.collectAsState(initial = emptyList())
+    val stores by viewModel.allStores.collectAsState(initial = emptyList())
     val storesWithDebt by viewModel.storesWithDebt.collectAsState(initial = emptyList())
-    val monthPurchases by viewModel.monthPurchases.collectAsState(initial = 0.0)
-    val monthPayments by viewModel.monthPayments.collectAsState(initial = 0.0)
-    val weekPurchases by viewModel.weekPurchases.collectAsState(initial = 0.0)
-    val weekPayments by viewModel.weekPayments.collectAsState(initial = 0.0)
     val isAdmin by viewModel.isAdmin.collectAsState(initial = false)
     val userName by viewModel.userName.collectAsState(initial = "")
+
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAddPurchase by remember { mutableStateOf(false) }
     var showAddPayment by remember { mutableStateOf(false) }
     var showQuickSummary by remember { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    val message by viewModel.message.collectAsState()
+    val message by viewModel.message.collectAsState(initial = null)
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -54,7 +52,7 @@ fun MainScreen(viewModel: BudgetViewModel) {
         }
     }
 
-        val totalDebt = storesWithDebt.fold(0.0) { acc, item -> acc + item.debt }
+    val totalDebt = storesWithDebt.fold(0.0) { acc, item -> acc + item.debt }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -111,10 +109,6 @@ fun MainScreen(viewModel: BudgetViewModel) {
                     viewModel = viewModel,
                     storesWithDebt = storesWithDebt,
                     totalDebt = totalDebt,
-                    weekPurchases = weekPurchases,
-                    weekPayments = weekPayments,
-                    monthPurchases = monthPurchases,
-                    monthPayments = monthPayments,
                     isAdmin = isAdmin,
                     userName = userName,
                     onAddPurchase = { showAddPurchase = true },
@@ -166,10 +160,6 @@ fun MainScreen(viewModel: BudgetViewModel) {
         QuickSummaryDialog(
             viewModel = viewModel,
             storesWithDebt = storesWithDebt,
-            weekPurchases = weekPurchases,
-            weekPayments = weekPayments,
-            monthPurchases = monthPurchases,
-            monthPayments = monthPayments,
             onDismiss = { showQuickSummary = false }
         )
     }
@@ -202,24 +192,22 @@ fun MainScreen(viewModel: BudgetViewModel) {
 // ═══════════════════════════════════════════
 // تبويب الرئيسية
 // ═══════════════════════════════════════════
-
 @Composable
 fun HomeTab(
     viewModel: BudgetViewModel,
     storesWithDebt: List<BudgetViewModel.StoreWithDebt>,
     totalDebt: Double,
-    weekPurchases: Double, weekPayments: Double,
-    monthPurchases: Double, monthPayments: Double,
-    isAdmin: Boolean, userName: String,
-    onAddPurchase: () -> Unit, onAddPayment: () -> Unit,
-    onShowSummary: () -> Unit, onChangePassword: () -> Unit,
-    onImport: () -> Unit, onLogout: () -> Unit
+    isAdmin: Boolean,
+    userName: String,
+    onAddPurchase: () -> Unit,
+    onAddPayment: () -> Unit,
+    onShowSummary: () -> Unit,
+    onChangePassword: () -> Unit,
+    onImport: () -> Unit,
+    onLogout: () -> Unit
 ) {
-    val userSummaries by viewModel.userSummaries.collectAsState()
-    
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
     var isExporting by remember { mutableStateOf(false) }
 
     Column(
@@ -346,7 +334,7 @@ fun HomeTab(
 
         Spacer(Modifier.height(12.dp))
 
-        // ═══ زر التصدير عبر الواتساب (للمستخدم العادي) ═══
+        // ═══ زر التصدير (للمستخدم العادي) ═══
         if (!isAdmin) {
             Button(
                 onClick = {
@@ -360,7 +348,7 @@ fun HomeTab(
                             }
                             context.startActivity(Intent.createChooser(intent, "إرسال عبر"))
                         } catch (e: Exception) {
-                            scope.launch { snackbarHostState.showSnackbar("خطأ: ${e.message}") }
+                            scope.launch { }
                         }
                         isExporting = false
                     }
@@ -420,72 +408,10 @@ fun HomeTab(
             Spacer(Modifier.height(12.dp))
         }
 
-        Spacer(Modifier.height(4.dp))
-
-        // ═══ ملخص الأسبوع ═══
-        Text("هذا الأسبوع", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SummaryCard(Modifier.weight(1f), Icons.Default.ShoppingCart, "مشتريات", viewModel.formatAmount(weekPurchases), Color(0xFFF44336))
-            SummaryCard(Modifier.weight(1f), Icons.Default.Payment, "مدفوعات", viewModel.formatAmount(weekPayments), Color(0xFF4CAF50))
-            SummaryCard(Modifier.weight(1f), Icons.Default.TrendingDown, "الصافي", viewModel.formatAmount(weekPurchases - weekPayments), if (weekPurchases - weekPayments > 0) Color(0xFFFF9800) else Color(0xFF4CAF50))
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // ═══ ملخص الشهر ═══
-        Text("هذا الشهر", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SummaryCard(Modifier.weight(1f), Icons.Default.ShoppingCart, "مشتريات", viewModel.formatAmount(monthPurchases), Color(0xFFF44336))
-            SummaryCard(Modifier.weight(1f), Icons.Default.Payment, "مدفوعات", viewModel.formatAmount(monthPayments), Color(0xFF4CAF50))
-            SummaryCard(Modifier.weight(1f), Icons.Default.TrendingDown, "الصافي", viewModel.formatAmount(monthPurchases - monthPayments), if (monthPurchases - monthPayments > 0) Color(0xFFFF9800) else Color(0xFF4CAF50))
-        }
-
         Spacer(Modifier.height(20.dp))
-                // ═══ ملخص المستخدمين (للمشرف) ═══
-        if (isAdmin && userSummaries.isNotEmpty()) {
-            Spacer(Modifier.height(16.dp))
-            Text("👥 المستخدمون", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
 
-            for (user in userSummaries) {
-                val userDebt = user.totalPurchases - user.totalPayments
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Person, null, tint = Color(0xFF2196F3), modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(user.senderTag, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Text(
-                            if (userDebt > 0) "عليه ${viewModel.formatAmount(userDebt)}"
-                            else if (userDebt < 0) "له ${viewModel.formatAmount(kotlin.math.abs(userDebt))}"
-                            else "مسدد",
-                            color = if (userDebt > 0) Color(0xFFF44336) else if (userDebt < 0) Color(0xFF4CAF50) else Color.Gray,
-                            fontSize = 13.sp, fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // ═══ حسابات البقالات (للمشرف فقط) ═══
-        if (isAdmin && storesWithDebt.any { it.debt != 0.0 }) {
+        // ═══ حسابات البقالات ═══
+        if (storesWithDebt.any { it.debt != 0.0 }) {
             Text("حسابات البقالات", color = Color(0xFFE8C547), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             for (item in storesWithDebt.filter { it.debt != 0.0 }) {
@@ -548,7 +474,7 @@ fun HomeTab(
 }
 
 // ═══════════════════════════════════════════
-// حوار الاستيراد (مبسط وموثوق)
+// حوار الاستيراد
 // ═══════════════════════════════════════════
 @Composable
 fun ImportDialog(
@@ -561,22 +487,12 @@ fun ImportDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                "استيراد بيانات",
-                color = Color(0xFF2196F3),
-                fontWeight = FontWeight.Bold
-            )
+            Text("استيراد بيانات", color = Color(0xFF2196F3), fontWeight = FontWeight.Bold)
         },
         text = {
             Column {
-                Text(
-                    "الصق رسالة الواتساب المستلمة:",
-                    color = Color.White,
-                    fontSize = 13.sp
-                )
-
+                Text("الصق رسالة الواتساب المستلمة:", color = Color.White, fontSize = 13.sp)
                 Spacer(Modifier.height(12.dp))
-
                 OutlinedTextField(
                     value = pastedText,
                     onValueChange = { newText ->
@@ -586,12 +502,7 @@ fun ImportDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 100.dp),
-                    placeholder = {
-                        Text(
-                            "الصق الرسالة هنا...",
-                            color = Color(0xFF666666)
-                        )
-                    },
+                    placeholder = { Text("الصق الرسالة هنا...", color = Color(0xFF666666)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
@@ -600,42 +511,23 @@ fun ImportDialog(
                         cursorColor = Color(0xFF2196F3)
                     )
                 )
-
                 Spacer(Modifier.height(8.dp))
-
                 when {
                     pastedText.isBlank() -> {
-                        Text(
-                            "الصق الرسالة من الواتساب هنا",
-                            color = Color(0xFF666666),
-                            fontSize = 11.sp
-                        )
+                        Text("الصق الرسالة من الواتساب هنا", color = Color(0xFF666666), fontSize = 11.sp)
                     }
                     hasData -> {
-                        Text(
-                            "تم العثور على بيانات - اضغط استيراد",
-                            color = Color(0xFF4CAF50),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("تم العثور على بيانات - اضغط استيراد", color = Color(0xFF4CAF50), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     else -> {
-                        Text(
-                            "لم يتم التعرف على البيانات. تأكد من نسخ الرسالة كاملة",
-                            color = Color(0xFFFF9800),
-                            fontSize = 11.sp
-                        )
+                        Text("لم يتم التعرف على البيانات", color = Color(0xFFFF9800), fontSize = 11.sp)
                     }
                 }
             }
         },
         confirmButton = {
             Button(
-                onClick = {
-                    if (pastedText.isNotBlank()) {
-                        onImport(pastedText)
-                    }
-                },
+                onClick = { if (pastedText.isNotBlank()) onImport(pastedText) },
                 enabled = pastedText.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF2196F3),
@@ -643,16 +535,11 @@ fun ImportDialog(
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text(
-                    "استيراد",
-                    color = if (pastedText.isNotBlank()) Color.White else Color.Gray
-                )
+                Text("استيراد", color = if (pastedText.isNotBlank()) Color.White else Color.Gray)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إلغاء", color = Color.Gray)
-            }
+            TextButton(onClick = onDismiss) { Text("إلغاء", color = Color.Gray) }
         }
     )
 }
@@ -661,10 +548,7 @@ fun ImportDialog(
 // حوار تغيير كلمة المرور
 // ═══════════════════════════════════════════
 @Composable
-fun ChangePasswordDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit
-) {
+fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
     var oldPass by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
     var confirmPass by remember { mutableStateOf("") }
@@ -676,41 +560,29 @@ fun ChangePasswordDialog(
         text = {
             Column {
                 OutlinedTextField(
-                    value = oldPass,
-                    onValueChange = { oldPass = it; error = "" },
-                    label = { Text("كلمة المرور الحالية") },
-                    modifier = Modifier.fillMaxWidth(),
+                    value = oldPass, onValueChange = { oldPass = it; error = "" },
+                    label = { Text("كلمة المرور الحالية") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFFE8C547),
-                        unfocusedBorderColor = Color.Gray
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray
                     )
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = newPass,
-                    onValueChange = { newPass = it; error = "" },
-                    label = { Text("كلمة المرور الجديدة") },
-                    modifier = Modifier.fillMaxWidth(),
+                    value = newPass, onValueChange = { newPass = it; error = "" },
+                    label = { Text("كلمة المرور الجديدة") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFFE8C547),
-                        unfocusedBorderColor = Color.Gray
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray
                     )
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = confirmPass,
-                    onValueChange = { confirmPass = it; error = "" },
-                    label = { Text("تأكيد كلمة المرور") },
-                    modifier = Modifier.fillMaxWidth(),
+                    value = confirmPass, onValueChange = { confirmPass = it; error = "" },
+                    label = { Text("تأكيد كلمة المرور") }, modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFFE8C547),
-                        unfocusedBorderColor = Color.Gray
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFE8C547), unfocusedBorderColor = Color.Gray
                     )
                 )
                 if (error.isNotBlank()) {
@@ -724,14 +596,10 @@ fun ChangePasswordDialog(
                 if (newPass != confirmPass) error = "كلمتا المرور غير متطابقتين"
                 else if (newPass.length < 4) error = "كلمة المرور قصيرة جداً"
                 else onConfirm(oldPass, newPass)
-            }) {
-                Text("تغيير", color = Color(0xFFE8C547))
-            }
+            }) { Text("تغيير", color = Color(0xFFE8C547)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إلغاء", color = Color.Gray)
-            }
+            TextButton(onClick = onDismiss) { Text("إلغاء", color = Color.Gray) }
         }
     )
 }
@@ -743,35 +611,13 @@ fun ChangePasswordDialog(
 fun QuickSummaryDialog(
     viewModel: BudgetViewModel,
     storesWithDebt: List<BudgetViewModel.StoreWithDebt>,
-    weekPurchases: Double,
-    weekPayments: Double,
-    monthPurchases: Double,
-    monthPayments: Double,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text("ملخص الحسابات", color = Color(0xFFE8C547), fontWeight = FontWeight.Bold)
-        },
+        title = { Text("ملخص الحسابات", color = Color(0xFFE8C547), fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text("هذا الأسبوع:", color = Color(0xFFE8C547), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                SummaryRow("مشتريات", viewModel.formatAmount(weekPurchases), Color(0xFFF44336))
-                SummaryRow("مدفوعات", viewModel.formatAmount(weekPayments), Color(0xFF4CAF50))
-                SummaryRow("الصافي", viewModel.formatAmount(weekPurchases - weekPayments), Color(0xFFFF9800))
-                Spacer(Modifier.height(12.dp))
-                Divider(color = Color(0xFF333333))
-                Spacer(Modifier.height(12.dp))
-                Text("هذا الشهر:", color = Color(0xFFE8C547), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                SummaryRow("مشتريات", viewModel.formatAmount(monthPurchases), Color(0xFFF44336))
-                SummaryRow("مدفوعات", viewModel.formatAmount(monthPayments), Color(0xFF4CAF50))
-                SummaryRow("الصافي", viewModel.formatAmount(monthPurchases - monthPayments), Color(0xFFFF9800))
-                Spacer(Modifier.height(12.dp))
-                Divider(color = Color(0xFF333333))
-                Spacer(Modifier.height(12.dp))
                 Text("حسابات البقالات:", color = Color(0xFFE8C547), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 if (storesWithDebt.isEmpty()) {
@@ -779,9 +625,7 @@ fun QuickSummaryDialog(
                 } else {
                     for (item in storesWithDebt) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(item.store.name, color = Color.White, fontSize = 13.sp)
@@ -792,8 +636,7 @@ fun QuickSummaryDialog(
                                 color = if (item.debt > 0) Color(0xFFF44336)
                                 else if (item.debt < 0) Color(0xFF4CAF50)
                                 else Color.Gray,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -801,50 +644,7 @@ fun QuickSummaryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إغلاق", color = Color(0xFFE8C547))
-            }
+            TextButton(onClick = onDismiss) { Text("إغلاق", color = Color(0xFFE8C547)) }
         }
     )
-}
-
-// ═══════════════════════════════════════════
-// مكونات مشتركة
-// ═══════════════════════════════════════════
-@Composable
-fun SummaryRow(label: String, value: String, color: Color) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, color = Color.Gray, fontSize = 13.sp)
-        Text(value, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-fun SummaryCard(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    title: String,
-    value: String,
-    color: Color
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(title, color = Color.Gray, fontSize = 10.sp)
-            Text(value, color = color, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
-    }
 }
