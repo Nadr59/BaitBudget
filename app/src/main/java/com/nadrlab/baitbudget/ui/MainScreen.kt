@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nadrlab.baitbudget.data.model.TransactionType
@@ -40,6 +44,7 @@ fun MainScreen(viewModel: BudgetViewModel) {
     var showQuickSummary by remember { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var showReportViewer by remember { mutableStateOf(false) }
     val message by viewModel.message.collectAsState(initial = null)
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -116,6 +121,7 @@ fun MainScreen(viewModel: BudgetViewModel) {
                     onShowSummary = { showQuickSummary = true },
                     onChangePassword = { showChangePassword = true },
                     onImport = { showImportDialog = true },
+                    onReportViewer = { showReportViewer = true },
                     onLogout = { viewModel.logout() }
                 )
                 1 -> TransactionsTab(
@@ -187,6 +193,12 @@ fun MainScreen(viewModel: BudgetViewModel) {
             }
         )
     }
+
+    if (showReportViewer && isAdmin) {
+        ReportViewerDialog(
+            onDismiss = { showReportViewer = false }
+        )
+    }
 }
 
 // ═══════════════════════════════════════════
@@ -204,6 +216,7 @@ fun HomeTab(
     onShowSummary: () -> Unit,
     onChangePassword: () -> Unit,
     onImport: () -> Unit,
+    onReportViewer: () -> Unit,
     onLogout: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -347,9 +360,7 @@ fun HomeTab(
                                 putExtra(Intent.EXTRA_TEXT, msg)
                             }
                             context.startActivity(Intent.createChooser(intent, "إرسال عبر"))
-                        } catch (e: Exception) {
-                            scope.launch { }
-                        }
+                        } catch (_: Exception) {}
                         isExporting = false
                     }
                 },
@@ -383,8 +394,9 @@ fun HomeTab(
             Spacer(Modifier.height(12.dp))
         }
 
-        // ═══ زر الاستيراد (للمشرف) ═══
+        // ═══ أزرار المشرف ═══
         if (isAdmin) {
+            // ═══ زر الاستيراد ═══
             Button(
                 onClick = onImport,
                 modifier = Modifier.fillMaxWidth(),
@@ -401,6 +413,29 @@ fun HomeTab(
 
             Text(
                 "الصق رسالة الواتساب المستلمة من المستخدم",
+                color = Color(0xFF666666),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // ═══ زر استلام التقرير ═══
+            Button(
+                onClick = onReportViewer,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(vertical = 14.dp)
+            ) {
+                Icon(Icons.Default.Description, null, tint = Color.White)
+                Spacer(Modifier.width(8.dp))
+                Text("📋 استلام تقرير من مستخدم", color = Color.White, fontSize = 14.sp)
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "الصق تقرير المستخدم لعرضه بشكل منظم",
                 color = Color(0xFF666666),
                 fontSize = 11.sp
             )
@@ -648,6 +683,7 @@ fun QuickSummaryDialog(
         }
     )
 }
+
 // ═══════════════════════════════════════════
 // حوار عرض تقرير المستخدم
 // ═══════════════════════════════════════════
@@ -691,18 +727,16 @@ fun ReportViewerDialog(
                     Spacer(Modifier.height(8.dp))
                     if (pastedText.isNotBlank()) {
                         Text(
-                            if (pastedText.contains("تقرير مشتريات المستخدم"))
-                                "تم التعرف على التقرير ✓"
-                            else
-                                "لم يتم التعرف على التقرير",
-                            color = if (pastedText.contains("تقرير مشتريات المستخدم"))
+                            if (pastedText.contains("تقرير") || pastedText.contains("مشتريات"))
+                                "تم التعرف على التقرير"
+                            else "لم يتم التعرف على التقرير",
+                            color = if (pastedText.contains("تقرير") || pastedText.contains("مشتريات"))
                                 Color(0xFF4CAF50) else Color(0xFFFF9800),
                             fontSize = 11.sp
                         )
                     }
                 }
             } else {
-                // ═══ عرض التقرير المُحلل ═══
                 val report = parsedReport
                 if (report != null) {
                     LazyColumn(
@@ -720,8 +754,8 @@ fun ReportViewerDialog(
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text("معلومات المستخدم", color = Color(0xFF9C27B0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.height(6.dp))
-                                    InfoRow("المستخدم:", report.userName)
-                                    InfoRow("التاريخ:", report.reportDate)
+                                    ReportInfoRow("المستخدم:", report.userName)
+                                    ReportInfoRow("التاريخ:", report.reportDate)
                                 }
                             }
                         }
@@ -737,16 +771,16 @@ fun ReportViewerDialog(
                                     Text("الملخص", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     Spacer(Modifier.height(6.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                        MiniStatCol("مشتريات", report.purchaseCount, Color(0xFFF44336))
-                                        MiniStatCol("مدفوعات", report.paymentCount, Color(0xFF4CAF50))
-                                        MiniStatCol("الكل", report.totalCount, Color(0xFF2196F3))
+                                        ReportMiniStat("مشتريات", report.purchaseCount, Color(0xFFF44336))
+                                        ReportMiniStat("مدفوعات", report.paymentCount, Color(0xFF4CAF50))
+                                        ReportMiniStat("الكل", report.totalCount, Color(0xFF2196F3))
                                     }
                                     Spacer(Modifier.height(8.dp))
                                     HorizontalDivider(color = Color(0xFF2A2A3E))
                                     Spacer(Modifier.height(8.dp))
-                                    InfoRow("إجمالي المشتريات:", report.totalPurchases)
-                                    InfoRow("إجمالي المدفوعات:", report.totalPayments)
-                                    InfoRow("المديونية:", report.debt, isHighlight = true)
+                                    ReportInfoRow("اجمالي المشتريات:", report.totalPurchases)
+                                    ReportInfoRow("اجمالي المدفوعات:", report.totalPayments)
+                                    ReportInfoRow("المديونية:", report.debt, isHighlight = true)
                                 }
                             }
                         }
@@ -799,7 +833,8 @@ fun ReportViewerDialog(
                             }
 
                             items(report.transactions) { tx ->
-                                val bgColor = if (report.transactions.indexOf(tx) % 2 == 0) Color(0xFF151520) else Color(0xFF1A1A2E)
+                                val idx = report.transactions.indexOf(tx)
+                                val bgColor = if (idx % 2 == 0) Color(0xFF151520) else Color(0xFF1A1A2E)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -837,7 +872,7 @@ fun ReportViewerDialog(
                                         }
                                         Spacer(Modifier.height(6.dp))
                                         for (dup in report.duplicates) {
-                                            Text("• $dup", color = Color(0xFFFF9800), fontSize = 11.sp)
+                                            Text("- $dup", color = Color(0xFFFF9800), fontSize = 11.sp)
                                         }
                                     }
                                 }
@@ -919,10 +954,6 @@ fun parseReport(text: String): ParsedReport {
 
     for (line in lines) {
         when {
-            line.contains("المستخدم:") -> {
-                userName = line.substringAfter("الم使用者:", "").trim()
-                    .ifBlank { line.substringAfter("المستخدم:", "").trim() }
-            }
             line.startsWith("المستخدم:") -> {
                 userName = line.substringAfter("المستخدم:").trim()
             }
@@ -956,21 +987,18 @@ fun parseReport(text: String): ParsedReport {
             line.contains("تنبيه تكرار") -> {
                 section = "duplicates"
             }
-            section == "stores" && line.startsWith("🏪") -> {
-                val parts = line.removePrefix("🏪").split(":", limit = 2)
-                if (parts.size == 2) {
-                    storeDebts.add(parts[0].trim() to parts[1].trim())
-                }
-            }
-            section == "stores" && ":" in line && !line.startsWith("---") && !line.startsWith("===") -> {
+            section == "stores" && ":" in line && !line.startsWith("---") && !line.startsWith("===") && line.length < 60 -> {
                 val parts = line.split(":", limit = 2)
-                if (parts.size == 2 && parts[0].length < 30) {
-                    storeDebts.add(parts[0].trim() to parts[1].trim())
+                if (parts.size == 2 && parts[0].isNotBlank()) {
+                    val name = parts[0].removePrefix("\uD83C\uDFEA").trim()
+                    if (name.isNotBlank()) {
+                        storeDebts.add(name to parts[1].trim())
+                    }
                 }
             }
-            section == "transactions" && "|" in line && !line.startsWith("-") && !line.startsWith("التاريخ") -> {
+            section == "transactions" && "|" in line && !line.startsWith("-") && !line.startsWith("التاريخ") && !line.startsWith("------") -> {
                 val parts = line.split("|").map { it.trim() }
-                if (parts.size >= 4) {
+                if (parts.size >= 4 && parts[0].isNotBlank()) {
                     transactions.add(
                         ParsedTransaction(
                             date = parts[0],
@@ -982,7 +1010,7 @@ fun parseReport(text: String): ParsedReport {
                 }
             }
             section == "duplicates" && line.startsWith("-") && line.length > 3 -> {
-                duplicates.add(line.removePrefix("-").removePrefix(" ").trim())
+                duplicates.add(line.removePrefix("-").trim())
             }
         }
     }
@@ -1003,12 +1031,14 @@ fun parseReport(text: String): ParsedReport {
 }
 
 // ═══════════════════════════════════════════
-// مكونات مساعدة
+// مكونات مساعدة للتقرير
 // ═══════════════════════════════════════════
 @Composable
-fun InfoRow(label: String, value: String, isHighlight: Boolean = false) {
+fun ReportInfoRow(label: String, value: String, isHighlight: Boolean = false) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(label, color = Color.Gray, fontSize = 12.sp)
@@ -1022,7 +1052,7 @@ fun InfoRow(label: String, value: String, isHighlight: Boolean = false) {
 }
 
 @Composable
-fun MiniStatCol(label: String, value: String, color: Color) {
+fun ReportMiniStat(label: String, value: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Text(label, color = Color.Gray, fontSize = 10.sp)
