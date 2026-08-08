@@ -12,18 +12,23 @@ class BudgetRepository(
     private val storeDao: StoreDao,
     private val transactionDao: TransactionDao
 ) {
+    // ═══ البقالات ═══
     fun getAllStores(): Flow<List<Store>> = storeDao.getAllStores()
+    suspend fun getAllStoresOnce(): List<Store> = storeDao.getAllStoresOnce()
     suspend fun getStoreById(id: Long): Store? = storeDao.getStoreById(id)
+    suspend fun getStoreByName(name: String): Store? = storeDao.getStoreByName(name)
     suspend fun insertStore(store: Store): Long = storeDao.insertStore(store)
     suspend fun updateStore(store: Store) = storeDao.updateStore(store)
     suspend fun deleteStore(store: Store) = storeDao.deleteStore(store)
 
+    // ═══ المعاملات ═══
     fun getAllTransactions(): Flow<List<Transaction>> = transactionDao.getAllTransactions()
     fun getTransactionsByStore(storeId: Long): Flow<List<Transaction>> = transactionDao.getTransactionsByStore(storeId)
     fun getTransactionsByDateRange(start: Long, end: Long): Flow<List<Transaction>> = transactionDao.getTransactionsByDateRange(start, end)
     suspend fun insertTransaction(transaction: Transaction): Long = transactionDao.insertTransaction(transaction)
     suspend fun deleteTransaction(transaction: Transaction) = transactionDao.deleteTransaction(transaction)
 
+    // ═══ المجاميع ═══
     fun getTotalPurchases(storeId: Long): Flow<Double> = transactionDao.getTotalPurchases(storeId)
     fun getTotalPayments(storeId: Long): Flow<Double> = transactionDao.getTotalPayments(storeId)
     fun getAllTimePurchases(): Flow<Double> = transactionDao.getAllTimePurchases()
