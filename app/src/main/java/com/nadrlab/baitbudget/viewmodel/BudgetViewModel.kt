@@ -1,4 +1,3 @@
-
 package com.nadrlab.baitbudget.viewmodel
 
 import android.app.Application
@@ -8,11 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.nadrlab.baitbudget.data.BudgetRepository
 import com.nadrlab.baitbudget.data.UserPrefs
 import com.nadrlab.baitbudget.data.db.AppDatabase
+import com.nadrlab.baitbudget.data.model.Report
 import com.nadrlab.baitbudget.data.model.Store
 import com.nadrlab.baitbudget.data.model.Transaction
 import com.nadrlab.baitbudget.data.model.TransactionType
-import com.nadrlab.baitbudget.data.model.UserSummaryData
-import kotlinx.coroutines.Dispatchers
+import com.nadrlab.baitbudget.ui.ParsedReport
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -24,17 +23,17 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     private val db = AppDatabase.getDatabase(application)
     private val repository = BudgetRepository(db.storeDao(), db.transactionDao())
+    private val reportDao = db.reportDao()
     val userPrefs = UserPrefs(application)
 
-    private val _isLoggedIn = MutableStateFlow(userPrefs.isLoggedIn)
-    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
-
+    // ═══ المستخدم والمشرف ═══
     private val _isAdmin = MutableStateFlow(userPrefs.isAdmin)
     val isAdmin: StateFlow<Boolean> = _isAdmin
 
     private val _userName = MutableStateFlow(userPrefs.userName)
     val userName: StateFlow<String> = _userName
 
+    // ═══ البيانات الأساسية ═══
     val allStores = repository.getAllStores()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -46,9 +45,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     val allTimePayments = repository.getAllTimePayments()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-
-    val userSummaries: StateFlow<List<UserSummaryData>> = repository.getUserSummaries()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val storesWithDebt: StateFlow<List<StoreWithDebt>> = allStores.flatMapLatest { stores ->
         if (stores.isEmpty()) flowOf(emptyList())
@@ -62,33 +58,70 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }) { it.toList() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val userSummaries: StateFlow<List<UserSummary>> =
+        allTransactions.combine(allStores) { transactions, stores ->
+            transactions
+                .groupBy { it.senderTag }
+                .filter { it.key.isNotBlank() }
+                .map { (senderTag, txs) ->
+                    UserSummary(
+                        senderTag = senderTag,
+                        totalPurchases = txs.filter { it.type == TransactionType.PURCHASE }.sumOf { it.amount },
+                        totalPayments = txs.filter { it.type == TransactionType.PAYMENT }.sumOf { it.amount },
+                        transactionCount = txs.size
+                    )
+                }
+                .sortedByDescending { it.totalPurchases - it.totalPayments }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ═══ التقارير المحفوظة ═══
+    val savedReports = reportDao.getAllReports()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val unreadReportCount = reportDao.getUnreadCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val reportUserNames = reportDao.getAllUserNames()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ═══ الرسائل ═══
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
     fun onMessageShown() { _message.value = null }
 
-    fun loginAsAdmin(password: String): Boolean {
-        return if (userPrefs.checkAdminPassword(password)) {
-            userPrefs.isAdmin = true; userPrefs.isLoggedIn = true; userPrefs.userName = "مشرف"
-            _isAdmin.value = true; _isLoggedIn.value = true; _userName.value = "مشرف"
+    // ═══ تسجيل الدخول ═══
+    fun adminLogin(password: String): Boolean {
+        if (password == userPrefs.adminPassword) {
+            userPrefs.isAdmin = true
+            _isAdmin.value = true
+            _userName.value = "مشرف"
+            return true
+        }
+        return false
+    }
+
+    fun userLogin(name: String) {
+        userPrefs.isAdmin = false
+        userPrefs.userName = name
+        _isAdmin.value = false
+        _userName.value = name
+    }
+
+    fun changeAdminPassword(oldPass: String, newPass: String): Boolean {
+        return if (oldPass == userPrefs.adminPassword) {
+            userPrefs.adminPassword = newPass
             true
         } else false
     }
 
-    fun loginAsUser(name: String) {
-        userPrefs.isAdmin = false; userPrefs.isLoggedIn = true; userPrefs.userName = name
-        _isAdmin.value = false; _isLoggedIn.value = true; _userName.value = name
-    }
-
     fun logout() {
-        userPrefs.logout()
-        _isLoggedIn.value = false; _isAdmin.value = false; _userName.value = ""
+        userPrefs.clear()
+        _isAdmin.value = false
+        _userName.value = ""
     }
 
-    fun changeAdminPassword(oldPass: String, newPass: String): Boolean {
-        return userPrefs.changeAdminPassword(oldPass, newPass)
-    }
-
+    // ═══ البقالات ═══
     fun addStore(name: String, phone: String, address: String) {
         viewModelScope.launch {
             repository.insertStore(Store(name = name, phone = phone, address = address))
@@ -103,12 +136,16 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // ═══ المعاملات ═══
     fun addPurchase(storeId: Long, amount: Double, description: String, note: String = "") {
         viewModelScope.launch {
             repository.insertTransaction(
                 Transaction(
-                    storeId = storeId, amount = amount, description = description,
-                    type = TransactionType.PURCHASE, note = note,
+                    storeId = storeId,
+                    amount = amount,
+                    description = description,
+                    type = TransactionType.PURCHASE,
+                    note = note,
                     senderTag = _userName.value
                 )
             )
@@ -120,8 +157,11 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.insertTransaction(
                 Transaction(
-                    storeId = storeId, amount = amount, description = description,
-                    type = TransactionType.PAYMENT, note = note,
+                    storeId = storeId,
+                    amount = amount,
+                    description = description,
+                    type = TransactionType.PAYMENT,
+                    note = note,
                     senderTag = _userName.value
                 )
             )
@@ -136,17 +176,119 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun normalizeNumbers(text: String): String {
-        return text
-            .replace('٠', '0').replace('١', '1').replace('٢', '2')
-            .replace('٣', '3').replace('٤', '4').replace('٥', '5')
-            .replace('٦', '6').replace('٧', '7').replace('٨', '8')
-            .replace('٩', '9').replace('٫', '.')
+    // ═══ التقارير ═══
+    fun saveReport(parsedReport: ParsedReport, rawText: String) {
+        viewModelScope.launch {
+            reportDao.insertReport(
+                Report(
+                    userName = parsedReport.userName.ifBlank { "غير معروف" },
+                    reportText = rawText,
+                    date = System.currentTimeMillis(),
+                    purchaseCount = parsedReport.purchaseCount.toIntOrNull() ?: 0,
+                    paymentCount = parsedReport.paymentCount.toIntOrNull() ?: 0,
+                    totalPurchases = parsedReport.totalPurchases.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0,
+                    totalPayments = parsedReport.totalPayments.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0,
+                    debt = parsedReport.debt.replace(Regex("[^0-9.\\-]"), "").toDoubleOrNull() ?: 0.0,
+                    transactionCount = parsedReport.totalCount.toIntOrNull() ?: 0,
+                    isRead = false
+                )
+            )
+            _message.value = "تم حفظ تقرير ${parsedReport.userName.ifBlank { "مستخدم" }}"
+        }
     }
 
-    // ═══════════════════════════════
-    // التصدير (فقط المعاملات الجديدة)
-    // ═══════════════════════════════
+    fun markReportRead(reportId: Long) {
+        viewModelScope.launch {
+            reportDao.markAsRead(reportId)
+        }
+    }
+
+    fun deleteReport(report: Report) {
+        viewModelScope.launch {
+            reportDao.deleteReport(report)
+            _message.value = "تم حذف التقرير"
+        }
+    }
+
+    fun getReportsForUser(userName: String): Flow<List<Report>> {
+        return reportDao.getReportsByUser(userName)
+    }
+
+    // ═══ الاستيراد ═══
+    fun importFromClipboard(text: String) {
+        viewModelScope.launch {
+            try {
+                val base64 = text.lines()
+                    .find { it.trim().startsWith("BB2::") }
+                    ?.trim()
+                    ?.removePrefix("BB2::")
+
+                if (base64.isNullOrBlank()) {
+                    _message.value = "لم يتم العثور على بيانات صالحة"
+                    return@launch
+                }
+
+                val jsonStr = String(
+                    Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE),
+                    Charsets.UTF_8
+                )
+                val json = JSONObject(jsonStr)
+
+                val storesArray = json.getJSONArray("s")
+                val storeNameToId = mutableMapOf<String, Long>()
+
+                for (i in 0 until storesArray.length()) {
+                    val s = storesArray.getJSONObject(i)
+                    val name = s.getString("n")
+                    val phone = s.optString("p", "")
+                    val address = s.optString("a", "")
+
+                    val existingStore = repository.getStoreByName(name)
+                    val storeId = if (existingStore != null) {
+                        existingStore.id
+                    } else {
+                        repository.insertStore(Store(name = name, phone = phone, address = address))
+                    }
+                    storeNameToId[name] = storeId
+                }
+
+                val txArray = json.getJSONArray("t")
+                var importedCount = 0
+
+                for (i in 0 until txArray.length()) {
+                    val t = txArray.getJSONObject(i)
+                    val storeName = t.getString("n")
+                    val storeId = storeNameToId[storeName] ?: continue
+                    val amount = t.getDouble("a")
+                    val desc = t.optString("d", "")
+                    val type = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT
+                    val date = t.getLong("dt")
+                    val note = t.optString("nt", "")
+
+                    repository.insertTransaction(
+                        Transaction(
+                            storeId = storeId,
+                            amount = amount,
+                            description = desc,
+                            type = type,
+                            date = date,
+                            note = note,
+                            senderTag = json.optString("u", "مستخدم"),
+                            exported = true
+                        )
+                    )
+                    importedCount++
+                }
+
+                _message.value = "تم استيراد $importedCount معاملة بنجاح"
+
+            } catch (e: Exception) {
+                _message.value = "خطأ في الاستيراد: ${e.message}"
+            }
+        }
+    }
+
+    // ═══ التصدير ═══
     suspend fun exportDataForSharing(): String {
         val stores = db.storeDao().getAllStoresOnce()
         val transactions = db.transactionDao().getUnexportedTransactions()
@@ -191,7 +333,6 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
             Base64.NO_WRAP or Base64.URL_SAFE
         )
 
-        // تحديد المعاملات كمُصدَّرة
         db.transactionDao().markAllAsExported()
 
         val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("ar"))
@@ -210,136 +351,31 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ═══════════════════════════════
-    // الاستيراد (مع فحص التكرار)
-    // ═══════════════════════════════
-    fun importFromClipboard(clipboardText: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val cleanText = clipboardText
-                    .replace(Regex("[\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]"), "")
-                    .replace("\r\n", "\n").replace("\r", "\n")
-
-                val markerIndex = cleanText.indexOf("BB2::")
-                if (markerIndex < 0) {
-                    _message.value = "لم يتم العثور على بيانات صالحة"
-                    return@launch
-                }
-
-                val afterMarker = cleanText.substring(markerIndex + 5)
-                val base64Chars = StringBuilder()
-
-                for (line in afterMarker.split("\n")) {
-                    val trimmed = line.trim()
-                    if (trimmed.startsWith("────") || trimmed.startsWith("---")) {
-                        if (base64Chars.isNotEmpty()) break
-                        continue
-                    }
-                    if (trimmed.length < 20 && base64Chars.isEmpty() && !trimmed.contains("=")) continue
-                    for (ch in trimmed) {
-                        if (ch.isLetterOrDigit() || ch == '+' || ch == '/' || ch == '-' || ch == '_' || ch == '=') {
-                            base64Chars.append(ch)
-                        }
-                    }
-                }
-
-                val base64 = base64Chars.toString().trim()
-                if (base64.length < 20) {
-                    _message.value = "بيانات غير كافية"
-                    return@launch
-                }
-
-                val decoded = try {
-                    Base64.decode(base64, Base64.NO_WRAP or Base64.URL_SAFE)
-                } catch (e: Exception) {
-                    try { Base64.decode(base64, Base64.DEFAULT) }
-                    catch (e2: Exception) {
-                        _message.value = "لا يمكن فك تشفير البيانات"
-                        return@launch
-                    }
-                }
-
-                val json = try { JSONObject(String(decoded, Charsets.UTF_8)) }
-                catch (e: Exception) {
-                    _message.value = "بيانات غير صالحة"
-                    return@launch
-                }
-
-                val senderName = json.optString("u", "غير معروف")
-                val storesArray = try { json.getJSONArray("s") } catch (e: Exception) {
-                    _message.value = "لا توجد بقالات"; return@launch
-                }
-                val transArray = try { json.getJSONArray("t") } catch (e: Exception) {
-                    _message.value = "لا توجد معاملات"; return@launch
-                }
-
-                val currentStores = db.storeDao().getAllStoresOnce()
-                val storeMap = mutableMapOf<String, Long>()
-
-                for (i in 0 until storesArray.length()) {
-                    val s = storesArray.getJSONObject(i)
-                    val name = s.getString("n")
-                    val phone = s.optString("p", "")
-                    val address = s.optString("a", "")
-                    val existing = currentStores.find { it.name.equals(name, ignoreCase = true) }
-                    val storeId = existing?.id ?: repository.insertStore(
-                        Store(name = name, phone = phone, address = address)
-                    )
-                    storeMap[name] = storeId
-                }
-
-                var count = 0
-                var skipped = 0
-                for (i in 0 until transArray.length()) {
-                    try {
-                        val t = transArray.getJSONObject(i)
-                        val storeName = t.getString("n")
-                        val storeId = storeMap[storeName] ?: continue
-                        val amount = t.getDouble("a")
-                        val transType = if (t.getString("t") == "P") TransactionType.PURCHASE else TransactionType.PAYMENT
-                        val date = t.getLong("dt")
-
-                        // ═══ فحص التكرار ═══
-                        val existing = repository.countDuplicate(storeId, amount, transType, date)
-                        if (existing > 0) {
-                            skipped++
-                            continue
-                        }
-
-                        repository.insertTransaction(Transaction(
-                            storeId = storeId,
-                            amount = amount,
-                            description = t.optString("d", ""),
-                            type = transType,
-                            date = date,
-                            note = t.optString("nt", ""),
-                            senderTag = senderName,
-                            exported = true
-                        ))
-                        count++
-                    } catch (_: Exception) {}
-                }
-
-                val msg = buildString {
-                    append("تم استيراد $count معاملة من $senderName")
-                    if (skipped > 0) append(" (تم تخطي $skipped مكررة)")
-                }
-                _message.value = msg
-
-            } catch (e: Exception) {
-                _message.value = "خطأ: ${e.message}"
-            }
-        }
-    }
-
+    // ═══ أدوات ═══
     fun formatAmount(amount: Double): String {
         return if (amount == amount.toLong().toDouble()) "%.0f".format(amount) else "%.2f".format(amount)
     }
 
+    fun normalizeNumbers(text: String): String {
+        return text
+            .replace('٠', '0').replace('١', '1').replace('٢', '2')
+            .replace('٣', '3').replace('٤', '4').replace('٥', '5')
+            .replace('٦', '6').replace('٧', '7').replace('٨', '8')
+            .replace('٩', '9').replace('٫', '.')
+    }
+
+    // ═══ بيانات ═══
     data class StoreWithDebt(
         val store: Store,
         val totalPurchases: Double,
         val totalPayments: Double,
         val debt: Double
+    )
+
+    data class UserSummary(
+        val senderTag: String,
+        val totalPurchases: Double,
+        val totalPayments: Double,
+        val transactionCount: Int
     )
 }
