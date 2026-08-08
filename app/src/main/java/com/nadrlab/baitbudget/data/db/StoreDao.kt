@@ -13,8 +13,8 @@ interface StoreDao {
     @Query("SELECT * FROM stores ORDER BY name ASC")
     suspend fun getAllStoresOnce(): List<Store>
 
-    @Query("SELECT * FROM stores WHERE id = :id")
-    suspend fun getStoreById(id: Long): Store?
+    @Query("SELECT * FROM stores WHERE name = :name LIMIT 1")
+    suspend fun getStoreByName(name: String): Store?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertStore(store: Store): Long
@@ -24,7 +24,4 @@ interface StoreDao {
 
     @Delete
     suspend fun deleteStore(store: Store)
-
-    @Query("DELETE FROM stores WHERE id = :id")
-    suspend fun deleteStoreById(id: Long)
 }
