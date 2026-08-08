@@ -560,23 +560,33 @@ fun ImportDialog(
                 }
             }
         },
-        confirmButton = {
-            Button(
-                onClick = { if (pastedText.isNotBlank()) onImport(pastedText) },
-                enabled = pastedText.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF2196F3),
-                    disabledContainerColor = Color(0xFF333333)
-                ),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("استيراد", color = if (pastedText.isNotBlank()) Color.White else Color.Gray)
+                confirmButton = {
+            if (!isParsed) {
+                TextButton(
+                    onClick = {
+                        parsedReport = parseReport(pastedText)
+                        isParsed = true
+                        // ═══ حفظ تلقائي عند العرض ═══
+                        parsedReport?.let { report ->
+                            viewModel.saveReport(report, pastedText)
+                        }
+                    },
+                    enabled = pastedText.isNotBlank()
+                ) {
+                    Text(
+                        "عرض وحفظ التقرير",
+                        color = if (pastedText.isNotBlank()) Color(0xFF9C27B0) else Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Row {
+                    TextButton(onClick = { isParsed = false; pastedText = "" }) {
+                        Text("تقرير آخر", color = Color(0xFF9C27B0))
+                    }
+                }
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("إلغاء", color = Color.Gray) }
-        }
-    )
 }
 
 // ═══════════════════════════════════════════
