@@ -648,3 +648,383 @@ fun QuickSummaryDialog(
         }
     )
 }
+// ═══════════════════════════════════════════
+// حوار عرض تقرير المستخدم
+// ═══════════════════════════════════════════
+@Composable
+fun ReportViewerDialog(
+    onDismiss: () -> Unit
+) {
+    var pastedText by remember { mutableStateOf("") }
+    var isParsed by remember { mutableStateOf(false) }
+    var parsedReport by remember { mutableStateOf<ParsedReport?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Description, null, tint = Color(0xFF9C27B0))
+                Spacer(Modifier.width(8.dp))
+                Text("تقرير المستخدم", color = Color(0xFF9C27B0), fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            if (!isParsed) {
+                Column {
+                    Text("الصق تقرير المستخدم المستلم عبر الواتساب:", color = Color.White, fontSize = 13.sp)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = pastedText,
+                        onValueChange = { pastedText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp),
+                        placeholder = { Text("الصق التقرير هنا...", color = Color(0xFF666666)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF9C27B0),
+                            unfocusedBorderColor = Color(0xFF444444),
+                            cursorColor = Color(0xFF9C27B0)
+                        )
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (pastedText.isNotBlank()) {
+                        Text(
+                            if (pastedText.contains("تقرير مشتريات المستخدم"))
+                                "تم التعرف على التقرير ✓"
+                            else
+                                "لم يتم التعرف على التقرير",
+                            color = if (pastedText.contains("تقرير مشتريات المستخدم"))
+                                Color(0xFF4CAF50) else Color(0xFFFF9800),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            } else {
+                // ═══ عرض التقرير المُحلل ═══
+                val report = parsedReport
+                if (report != null) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 450.dp)
+                    ) {
+                        // ═══ معلومات المستخدم ═══
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("معلومات المستخدم", color = Color(0xFF9C27B0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.height(6.dp))
+                                    InfoRow("المستخدم:", report.userName)
+                                    InfoRow("التاريخ:", report.reportDate)
+                                }
+                            }
+                        }
+
+                        // ═══ الملخص ═══
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2A1A)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("الملخص", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                        MiniStatCol("مشتريات", report.purchaseCount, Color(0xFFF44336))
+                                        MiniStatCol("مدفوعات", report.paymentCount, Color(0xFF4CAF50))
+                                        MiniStatCol("الكل", report.totalCount, Color(0xFF2196F3))
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    HorizontalDivider(color = Color(0xFF2A2A3E))
+                                    Spacer(Modifier.height(8.dp))
+                                    InfoRow("إجمالي المشتريات:", report.totalPurchases)
+                                    InfoRow("إجمالي المدفوعات:", report.totalPayments)
+                                    InfoRow("المديونية:", report.debt, isHighlight = true)
+                                }
+                            }
+                        }
+
+                        // ═══ حسابات البقالات ═══
+                        if (report.storeDebts.isNotEmpty()) {
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text("حسابات البقالات", color = Color(0xFFE8C547), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(6.dp))
+                                        for (storeDebt in report.storeDebts) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(storeDebt.first, color = Color.White, fontSize = 12.sp)
+                                                Text(storeDebt.second, color = Color(0xFFE8C547), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ═══ جدول العمليات ═══
+                        if (report.transactions.isNotEmpty()) {
+                            item {
+                                Text("جدول العمليات", color = Color(0xFFE8C547), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                            }
+
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF2A2A3E), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("التاريخ", color = Color(0xFFE8C547), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
+                                    Text("النوع", color = Color(0xFFE8C547), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
+                                    Text("البقالة", color = Color(0xFFE8C547), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text("المبلغ", color = Color(0xFFE8C547), fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                                }
+                            }
+
+                            items(report.transactions) { tx ->
+                                val bgColor = if (report.transactions.indexOf(tx) % 2 == 0) Color(0xFF151520) else Color(0xFF1A1A2E)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(bgColor, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(tx.date, color = Color(0xFFAAAAAA), fontSize = 10.sp, modifier = Modifier.weight(1.5f))
+                                    Text(
+                                        tx.type,
+                                        color = if (tx.type.contains("شراء")) Color(0xFFF44336) else Color(0xFF4CAF50),
+                                        fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f)
+                                    )
+                                    Text(tx.store, color = Color.White, fontSize = 10.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(tx.amount, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                                }
+                            }
+                        }
+
+                        // ═══ تنبيه التكرارات ═══
+                        if (report.duplicates.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(8.dp))
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF3A2A1A)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Warning, null, tint = Color(0xFFFF9800), modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("تنبيه تكرار", color = Color(0xFFFF9800), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.height(6.dp))
+                                        for (dup in report.duplicates) {
+                                            Text("• $dup", color = Color(0xFFFF9800), fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!isParsed) {
+                TextButton(
+                    onClick = {
+                        parsedReport = parseReport(pastedText)
+                        isParsed = true
+                    },
+                    enabled = pastedText.isNotBlank()
+                ) {
+                    Text(
+                        "عرض التقرير",
+                        color = if (pastedText.isNotBlank()) Color(0xFF9C27B0) else Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                TextButton(onClick = { isParsed = false; pastedText = "" }) {
+                    Text("تقرير آخر", color = Color.Gray)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إغلاق", color = Color.Gray)
+            }
+        }
+    )
+}
+
+// ═══════════════════════════════════════════
+// تحليل التقرير النصي
+// ═══════════════════════════════════════════
+data class ParsedReport(
+    val userName: String,
+    val reportDate: String,
+    val purchaseCount: String,
+    val paymentCount: String,
+    val totalCount: String,
+    val totalPurchases: String,
+    val totalPayments: String,
+    val debt: String,
+    val storeDebts: List<Pair<String, String>>,
+    val transactions: List<ParsedTransaction>,
+    val duplicates: List<String>
+)
+
+data class ParsedTransaction(
+    val date: String,
+    val type: String,
+    val store: String,
+    val amount: String
+)
+
+fun parseReport(text: String): ParsedReport {
+    val lines = text.lines().map { it.trim() }
+
+    var userName = ""
+    var reportDate = ""
+    var purchaseCount = "0"
+    var paymentCount = "0"
+    var totalCount = "0"
+    var totalPurchases = "0"
+    var totalPayments = "0"
+    var debt = "0"
+    val storeDebts = mutableListOf<Pair<String, String>>()
+    val transactions = mutableListOf<ParsedTransaction>()
+    val duplicates = mutableListOf<String>()
+
+    var section = ""
+
+    for (line in lines) {
+        when {
+            line.contains("المستخدم:") -> {
+                userName = line.substringAfter("الم使用者:", "").trim()
+                    .ifBlank { line.substringAfter("المستخدم:", "").trim() }
+            }
+            line.startsWith("المستخدم:") -> {
+                userName = line.substringAfter("المستخدم:").trim()
+            }
+            line.startsWith("التاريخ:") -> {
+                reportDate = line.substringAfter("التاريخ:").trim()
+            }
+            line.startsWith("عدد المشتريات:") -> {
+                purchaseCount = line.substringAfter(":").trim()
+            }
+            line.startsWith("عدد المدفوعات:") -> {
+                paymentCount = line.substringAfter(":").trim()
+            }
+            line.startsWith("اجمالي العمليات:") || line.startsWith("إجمالي العمليات:") -> {
+                totalCount = line.substringAfter(":").trim()
+            }
+            line.startsWith("اجمالي المشتريات:") || line.startsWith("إجمالي المشتريات:") -> {
+                totalPurchases = line.substringAfter(":").trim()
+            }
+            line.startsWith("اجمالي المدفوعات:") || line.startsWith("إجمالي المدفوعات:") -> {
+                totalPayments = line.substringAfter(":").trim()
+            }
+            line.startsWith("المديونية:") -> {
+                debt = line.substringAfter(":").trim()
+            }
+            line.contains("حسابات البقالات") -> {
+                section = "stores"
+            }
+            line.contains("جدول العمليات") -> {
+                section = "transactions"
+            }
+            line.contains("تنبيه تكرار") -> {
+                section = "duplicates"
+            }
+            section == "stores" && line.startsWith("🏪") -> {
+                val parts = line.removePrefix("🏪").split(":", limit = 2)
+                if (parts.size == 2) {
+                    storeDebts.add(parts[0].trim() to parts[1].trim())
+                }
+            }
+            section == "stores" && ":" in line && !line.startsWith("---") && !line.startsWith("===") -> {
+                val parts = line.split(":", limit = 2)
+                if (parts.size == 2 && parts[0].length < 30) {
+                    storeDebts.add(parts[0].trim() to parts[1].trim())
+                }
+            }
+            section == "transactions" && "|" in line && !line.startsWith("-") && !line.startsWith("التاريخ") -> {
+                val parts = line.split("|").map { it.trim() }
+                if (parts.size >= 4) {
+                    transactions.add(
+                        ParsedTransaction(
+                            date = parts[0],
+                            type = parts[1],
+                            store = parts[2],
+                            amount = parts[3]
+                        )
+                    )
+                }
+            }
+            section == "duplicates" && line.startsWith("-") && line.length > 3 -> {
+                duplicates.add(line.removePrefix("-").removePrefix(" ").trim())
+            }
+        }
+    }
+
+    return ParsedReport(
+        userName = userName,
+        reportDate = reportDate,
+        purchaseCount = purchaseCount,
+        paymentCount = paymentCount,
+        totalCount = totalCount,
+        totalPurchases = totalPurchases,
+        totalPayments = totalPayments,
+        debt = debt,
+        storeDebts = storeDebts,
+        transactions = transactions,
+        duplicates = duplicates
+    )
+}
+
+// ═══════════════════════════════════════════
+// مكونات مساعدة
+// ═══════════════════════════════════════════
+@Composable
+fun InfoRow(label: String, value: String, isHighlight: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = Color.Gray, fontSize = 12.sp)
+        Text(
+            value,
+            color = if (isHighlight) Color(0xFFE8C547) else Color.White,
+            fontSize = 12.sp,
+            fontWeight = if (isHighlight) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+fun MiniStatCol(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Color.Gray, fontSize = 10.sp)
+    }
+}
