@@ -23,6 +23,7 @@ class BudgetRepository(
 
     // ═══ المعاملات ═══
     fun getAllTransactions(): Flow<List<Transaction>> = transactionDao.getAllTransactions()
+    suspend fun getAllTransactionsOnce(): List<Transaction> = transactionDao.getAllTransactionsOnce()
     fun getTransactionsByStore(storeId: Long): Flow<List<Transaction>> = transactionDao.getTransactionsByStore(storeId)
     fun getTransactionsByDateRange(start: Long, end: Long): Flow<List<Transaction>> = transactionDao.getTransactionsByDateRange(start, end)
     suspend fun insertTransaction(transaction: Transaction): Long = transactionDao.insertTransaction(transaction)
